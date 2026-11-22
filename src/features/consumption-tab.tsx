@@ -3,10 +3,12 @@ import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import type { MeasurementType } from '@/api/datadis';
 import { BarChart, SplitBar, type BarDatum } from '@/components/bar-chart';
+import { DateRangePicker } from '@/components/date-range-picker';
+import { Select } from '@/components/select';
 import { Heatmap } from '@/components/heatmap';
 import {
   Card,
@@ -19,12 +21,12 @@ import {
   Loading,
   SavedDataNotice,
   Screen,
-  Segmented,
   Stepper,
   T,
   type Column,
 } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import {
   estimateCost,
@@ -55,22 +57,24 @@ import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 
 import { daysInMonth, useConsumptionMonths } from './consumption-data';
 import {
-  MODE_OPTIONS,
-  canStep,
-  comparisons,
-  initialPeriod,
-  periodLabel,
-  step,
+  canStepRange,
+  dayBounds,
+  daysBetween,
+  initialRange,
+  rangeComparisons,
+  rangeKind,
+  rangeLabel,
+  rangeMonths as monthsOfRange,
+  rangePresets,
+  stepRange,
   supplyBounds,
-  windowMonths,
-  type PeriodMode,
-  type PeriodSel,
+  type DateRange,
 } from './period';
 import { useContract, useMaxPower } from './queries';
 import { useSupplyTariffs } from './tariffs';
 import { rangeMonths, type SupplyRef } from './types';
 
-type ChartView = 'dias' | 'meses' | 'horas' | 'semana' | 'mapa' | 'dia';
+type ChartView = 'dias' | 'meses' | 'horas' | 'semana';
 type Unit = 'kwh' | 'kw';
 
 const PERIODS_INFO =
@@ -87,18 +91,25 @@ type CurvePeak = { kw: number; start: number; period: Period };
 export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
   const { current: tariff } = useSupplyTariffs(supply.cups);
+  const { settings } = useSession();
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
-  const [period, setPeriod] = useState<PeriodSel>(() => initialPeriod(bounds));
+  const [range, setRange] = useState<DateRange>(() => initialRange(bounds));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const nDays = daysBetween(range);
+  const isDay = nDays === 1;
   const [mtPref, setMt] = useState<MeasurementType>(0);
-  const mt: MeasurementType = period.mode === 'month' ? mtPref : 0;
-  const [viewPref, setView] = useState<ChartView>('dias');
+  const mt: MeasurementType = nDays <= 31 ? mtPref : 0;
+  const [viewPref, setView] = useState<ChartView | null>(null);
   const [unitPref, setUnit] = useState<Unit>('kwh');
-  const [dayIdx, setDayIdx] = useState<number | null>(null);
+  const [heat, setHeat] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
-  const win = useMemo(() => windowMonths(period, bounds), [period, bounds]);
-  const comps = useMemo(() => comparisons(period, bounds), [period, bounds]);
-  const allMonths = useMemo(() => [...new Set([...win, ...comps.flatMap((x) => x.months)])].sort(), [win, comps]);
+  const win = useMemo(() => monthsOfRange(range), [range]);
+  const comps = useMemo(() => rangeComparisons(range, bounds), [range, bounds]);
+  const allMonths = useMemo(
+    () => [...new Set([...win, ...comps.flatMap((x) => monthsOfRange(x.range))])].filter((k) => k >= bounds.min && k <= bounds.max).sort(),
+    [win, comps, bounds],
+  );
 
   const q = useConsumptionMonths(supply, allMonths, mt);
   const contract = useContract(supply);
@@ -123,8 +134,12 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
   const intervalMin = mt === 1 ? 15 : 60;
   const toKW = 60 / intervalMin;
-  const readings = useMemo(() => normalize(win.flatMap((k) => q.months[k] ?? []), intervalMin), [q.months, win, intervalMin]);
+  const readings = useMemo(
+    () => normalize(win.flatMap((k) => q.months[k] ?? []), intervalMin).filter((x) => x.day >= range.from && x.day <= range.to),
+    [q.months, win, intervalMin, range],
+  );
   const s = useMemo(() => summarize(readings, intervalMin), [readings, intervalMin]);
+  const showSolar = settings.hasSolar && s.hasSelfConsumption;
   const cost = useMemo(() => estimateCost(s.byPeriod, s.surplus, s.days, contractedKW, tariff), [s, contractedKW, tariff]);
 
   // Pico de potencia de la curva por día, por mes y por hora del día
@@ -142,41 +157,34 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     return { byDay, byMonth, byHour };
   }, [readings, toKW]);
 
-  // Comparativas a igualdad de días: el periodo anterior se corta en la misma fecha relativa
+  // Comparativas con el periodo anterior equivalente (solo si tiene una cobertura de días similar)
   const deltas = useMemo(() => {
-    const last = readings[readings.length - 1];
-    if (!last) return [];
+    if (!readings.length) return [];
     return comps
-      .filter((cmp) => cmp.months.every((k) => q.months[k] !== undefined))
+      .filter((cmp) => monthsOfRange(cmp.range).every((k) => k < bounds.min || q.months[k] !== undefined))
       .map((cmp) => {
-        const cutoff = new Date(last.start);
-        cutoff.setMonth(cutoff.getMonth() - cmp.shift);
-        const prev = normalize(cmp.months.flatMap((k) => q.months[k] ?? []), intervalMin).filter((r) => r.start <= cutoff.getTime());
-        const prevTotal = prev.reduce((acc, r) => acc + r.kwh, 0);
-        const prevDays = new Set(prev.map((r) => r.day)).size;
-        return { label: cmp.label, pct: prevDays >= s.days * 0.9 ? pctChange(s.total, prevTotal) : null, prevTotal };
+        const prev = normalize(monthsOfRange(cmp.range).flatMap((k) => q.months[k] ?? []), intervalMin).filter(
+          (x) => x.day >= cmp.range.from && x.day <= cmp.range.to,
+        );
+        const prevTotal = prev.reduce((acc, x) => acc + x.kwh, 0);
+        const prevDays = new Set(prev.map((x) => x.day)).size;
+        return { label: cmp.label, pct: prev.length && prevDays >= s.days * 0.9 ? pctChange(s.total, prevTotal) : null, prevTotal };
       })
       .filter((d) => d.pct !== null);
-  }, [comps, q.months, readings, s.total, s.days, intervalMin]);
+  }, [comps, q.months, readings, s.total, s.days, intervalMin, bounds.min]);
 
-  const isMonth = period.mode === 'month';
-  const viewOptions: { value: ChartView; label: string }[] = isMonth
-    ? [
-        { value: 'dias', label: 'Días' },
-        { value: 'dia', label: 'Un día' },
-        { value: 'horas', label: 'Horas' },
-        { value: 'semana', label: 'Semana' },
-        { value: 'mapa', label: 'Calor' },
-      ]
-    : [
-        { value: 'meses', label: 'Meses' },
-        { value: 'dias', label: 'Días' },
-        { value: 'horas', label: 'Horas' },
-        { value: 'semana', label: 'Semana' },
-        { value: 'mapa', label: 'Calor' },
-      ];
-  const view: ChartView = viewOptions.some((o) => o.value === viewPref) ? viewPref : viewOptions[0].value;
-  const powerAvailable = view === 'dias' || view === 'meses' || view === 'dia' || view === 'horas';
+  // Etiquetas de días: solo el número si todo el rango está en el mismo mes
+  const isMonth = range.from.slice(0, 7) === range.to.slice(0, 7);
+  const viewOptions: { value: ChartView; label: string }[] = [
+    ...(nDays > 31 ? [{ value: 'meses' as const, label: 'Por meses' }] : []),
+    { value: 'dias', label: 'Por días' },
+    { value: 'horas', label: 'Por horas del día' },
+    { value: 'semana', label: 'Por día de la semana' },
+  ];
+  const defaultView: ChartView = nDays > 62 ? 'meses' : 'dias';
+  const view: ChartView = viewPref && viewOptions.some((o) => o.value === viewPref) ? viewPref : defaultView;
+  const showHeat = heat && !isDay;
+  const powerAvailable = !showHeat && (isDay || view !== 'semana');
   const unit: Unit = powerAvailable ? unitPref : 'kwh';
 
   const periodColors: Record<Period, string> = { P1: c.p1, P2: c.p2, P3: c.p3 };
@@ -196,20 +204,9 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     { color: markerColor, label: 'Pico medido (15 min)' },
   ];
 
-  const selDayIdx = s.daily.length ? (dayIdx === null ? s.daily.length - 1 : Math.min(dayIdx, s.daily.length - 1)) : -1;
-  const selDay = selDayIdx >= 0 ? s.daily[selDayIdx] : null;
-  const dayReadings = useMemo(() => (selDay ? readings.filter((r) => r.day === selDay.key) : []), [readings, selDay]);
-  const dayMeasured = selDay ? measured.byDay.get(selDay.key) : undefined;
-
-  const changeMode = (mode: PeriodMode) => {
-    setPeriod((p) => {
-      let month = p.month;
-      if (month > bounds.max) month = bounds.max;
-      if (month < bounds.min) month = bounds.min;
-      return { mode, month, year: mode === 'year' ? Number(month.slice(0, 4)) : p.year };
-    });
-    setDayIdx(null);
-  };
+  const selDay = isDay ? (s.daily[0] ?? null) : null;
+  const dayReadings = readings;
+  const dayMeasured = isDay ? measured.byDay.get(range.from) : undefined;
 
   const exportCsv = async () => {
     try {
@@ -241,7 +238,9 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   let chart: ChartSpec | null = null;
   const measuredNote = (m?: MaxPowerReading) => (m ? `Pico medido por el contador: ${fmtKW(m.kw, 2)} a las ${m.time}` : undefined);
 
-  if (view === 'dias') {
+  if (isDay) {
+    chart = null; // se rellena más abajo (vista de un día)
+  } else if (view === 'dias') {
     chart =
       unit === 'kwh'
         ? {
@@ -326,7 +325,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
       data: s.weekdayAvg.map((v, i) => ({ label: WEEKDAYS_SHORT[i], detail: `${WEEKDAYS[i]} (media)`, segments: [{ value: v, color: i >= 5 ? c.p3 : c.tint }] })),
       format: (v) => fmtKWh(v, 1),
     };
-  } else if (view === 'dia' && selDay) {
+  }
+  if (isDay && selDay) {
     // Intervalo en el que cae el pico medido por el contador (la hora es la de fin del cuarto de hora)
     let measuredIdx = -1;
     if (dayMeasured) {
@@ -366,26 +366,30 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   }
 
   const loadingFirst = q.loading && readings.length === 0;
-  const forecast = isMonth ? s.avgPerDay * daysInMonth(period.month) : 0;
+  const kind = rangeKind(range);
+  const showForecast = kind === 'month' && range.to.slice(0, 7) === bounds.max;
+  const forecast = showForecast ? s.avgPerDay * daysInMonth(range.from.slice(0, 7)) : 0;
   const curveMax = Math.max(0, ...[...curvePeaks.byDay.values()].map((p) => p.kw));
 
   return (
     <Screen refreshing={q.loading && readings.length > 0} onRefresh={q.refresh}>
       {/* ---------- Periodo ---------- */}
       <View style={{ gap: Spacing.two }}>
-        <Segmented<PeriodMode> value={period.mode} onChange={changeMode} options={MODE_OPTIONS} />
         <Stepper
-          label={periodLabel(period, bounds)}
-          canPrev={canStep(period, bounds, -1)}
-          canNext={canStep(period, bounds, 1)}
-          onPrev={() => {
-            setPeriod((p) => step(p, -1));
-            setDayIdx(null);
-          }}
-          onNext={() => {
-            setPeriod((p) => step(p, 1));
-            setDayIdx(null);
-          }}
+          label={rangeLabel(range)}
+          canPrev={canStepRange(range, -1, bounds)}
+          canNext={canStepRange(range, 1, bounds)}
+          onPrev={() => setRange((x) => stepRange(x, -1, bounds))}
+          onNext={() => setRange((x) => stepRange(x, 1, bounds))}
+          onPressLabel={() => setPickerOpen(true)}
+        />
+        <DateRangePicker
+          visible={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          value={range}
+          limits={dayBounds(bounds)}
+          presets={rangePresets(bounds)}
+          onApply={setRange}
         />
         {q.loading && readings.length > 0 ? <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} /> : null}
       </View>
@@ -394,7 +398,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
       <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
 
       {!q.loading && !q.error && readings.length === 0 ? (
-        <Empty text={mt === 1 ? 'Sin datos cada 15 minutos para este mes. Prueba con «1 h».' : 'Aún no hay datos para este periodo.'} />
+        <Empty text={mt === 1 ? 'Sin datos cada 15 minutos para estas fechas. Prueba con «Cada hora».' : 'Aún no hay datos para estas fechas.'} />
       ) : null}
 
       {readings.length > 0 && (
@@ -415,11 +419,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             </View>
             <View style={styles.miniRow}>
               <Mini label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} />
-              {isMonth ? (
+              {showForecast ? (
                 <Mini label="Previsión" value={fmtKWh(forecast, 0)} />
-              ) : (
+              ) : nDays > 62 ? (
                 <Mini label="Media mensual" value={fmtKWh(s.monthly.length ? s.total / s.monthly.length : 0, 0)} />
-              )}
+              ) : null}
               <Mini label="Pico" value={fmtKW(curveMax, 1)} color={p1 && curveMax > p1 ? c.danger : undefined} />
             </View>
           </Card>
@@ -428,29 +432,29 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
           <Card>
             <View style={styles.toolbar}>
               {powerAvailable ? (
-                <Segmented<Unit>
-                  style={{ flex: 1 }}
+                <Select<Unit>
+                  title="Mostrar"
                   value={unit}
                   onChange={setUnit}
                   options={[
-                    { value: 'kwh', label: 'Energía' },
-                    { value: 'kw', label: 'Potencia' },
+                    { value: 'kwh', label: 'Energía', hint: 'kWh consumidos' },
+                    { value: 'kw', label: 'Potencia', hint: 'kW demandados, picos y potencia contratada' },
                   ]}
                 />
-              ) : (
-                <View style={{ flex: 1 }} />
-              )}
-              {isMonth ? (
-                <Segmented<MeasurementType>
+              ) : null}
+              {!isDay && !showHeat ? <Select<ChartView> title="Ver por" value={view} onChange={setView} options={viewOptions} /> : null}
+              {nDays <= 31 && !showHeat ? (
+                <Select<MeasurementType>
+                  title="Detalle"
                   value={mt}
                   onChange={setMt}
                   options={[
-                    { value: 0, label: '1 h' },
-                    { value: 1, label: '15 min' },
+                    { value: 0, label: 'Cada hora' },
+                    { value: 1, label: 'Cada 15 min', hint: 'Más detalle. No todos los contadores lo ofrecen' },
                   ]}
-                  style={{ width: 112 }}
                 />
               ) : null}
+              <View style={{ flex: 1 }} />
               <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={8} accessibilityLabel="Más información">
                 <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
               </Pressable>
@@ -458,28 +462,28 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             {showInfo ? (
               <View style={[styles.infoBox, { backgroundColor: c.backgroundElement }]}>
                 <T variant="small" style={{ color: c.text }}>
-                  {unit === 'kw' ? POWER_INFO : 'Los colores son los periodos de la tarifa: rojo punta (más caro), amarillo llano y verde valle (más barato). Toca una barra para ver el valor exacto.'}
+                  {showHeat
+                    ? 'Consumo medio por día de la semana y hora: cuanto más intenso el color, más consumo. Toca una casilla para ver su valor.'
+                    : unit === 'kw'
+                      ? POWER_INFO
+                      : 'Los colores son los periodos de la tarifa: rojo punta (más caro), amarillo llano y verde valle (más barato). Toca una barra para ver el valor exacto.'}
                 </T>
               </View>
             ) : null}
-            <Segmented<ChartView> options={viewOptions} value={view} onChange={setView} />
-
-            {view === 'dia' && selDay ? (
-              <Stepper
-                label={`${WEEKDAYS[weekdayOf(selDay.key)]} ${Number(selDay.key.slice(8))}`}
-                sublabel={unit === 'kwh' ? fmtKWh(selDay.total, 1) : `pico ${fmtKW(Math.max(0, ...dayReadings.map((r) => r.kwh * toKW)), 2)}`}
-                canPrev={selDayIdx > 0}
-                canNext={selDayIdx < s.daily.length - 1}
-                onPrev={() => setDayIdx(selDayIdx - 1)}
-                onNext={() => setDayIdx(selDayIdx + 1)}
-              />
+            {!isDay ? (
+              <View style={styles.switchRow}>
+                <T variant="small" style={{ flex: 1 }}>
+                  Mapa de calor
+                </T>
+                <Switch value={heat} onValueChange={setHeat} trackColor={{ true: c.tint }} />
+              </View>
             ) : null}
 
-            {view === 'mapa' ? (
+            {showHeat ? (
               <Heatmap rows={WEEKDAYS_SHORT} rowNames={WEEKDAYS} matrix={s.heat} formatValue={(v) => fmtKWh(v, 2)} />
             ) : chart ? (
               <BarChart
-                key={`${view}-${unit}-${selDay?.key}-${mt}`}
+                key={`${view}-${unit}-${range.from}-${range.to}-${mt}`}
                 data={chart.data}
                 markers={chart.markers}
                 formatValue={chart.format}
@@ -493,10 +497,10 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             {unit === 'kw' && maxp.loading && !maxp.data ? <InlineLoading text="Cargando picos medidos…" /> : null}
 
             <Disclosure title="Ver datos">
-              {view === 'dia' ? (
+              {isDay ? (
                 <ReadingsTable readings={dayReadings} intervalMin={intervalMin} />
               ) : view === 'meses' ? (
-                <BucketTable buckets={s.monthly} keyTitle="Mes" keyFmt={(k) => fmtMonthShort(k)} showSurplus={s.hasSelfConsumption} withTotal />
+                <BucketTable buckets={s.monthly} keyTitle="Mes" keyFmt={(k) => fmtMonthShort(k)} showSurplus={showSolar} withTotal />
               ) : unit === 'kw' ? (
                 <PowerTable days={s.daily.map((d) => d.key).reverse()} curve={curvePeaks.byDay} measured={measured.byDay} />
               ) : (
@@ -504,7 +508,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                   buckets={[...s.daily].reverse()}
                   keyTitle="Día"
                   keyFmt={(k) => `${WEEKDAYS_SHORT[weekdayOf(k)]} ${fmtDayShort(k)}`}
-                  showSurplus={s.hasSelfConsumption}
+                  showSurplus={showSolar}
                 />
               )}
             </Disclosure>
@@ -527,7 +531,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
           </Card>
 
           {/* ---------- Autoconsumo ---------- */}
-          {s.hasSelfConsumption && (
+          {showSolar && (
             <Card
               title="Autoconsumo"
               info="Generada: lo que han producido tus placas. Excedentes: lo que vertiste a la red (te lo compensan). Autosuficiencia: parte de tu consumo cubierta por tus placas.">
@@ -700,5 +704,6 @@ const styles = StyleSheet.create({
   periodRow: { flexDirection: 'row' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   infoBox: { borderRadius: 10, padding: 10 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', marginVertical: -4 },
   export: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
 });

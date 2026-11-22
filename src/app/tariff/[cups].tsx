@@ -5,6 +5,7 @@ import { Alert, Pressable, View } from 'react-native';
 import { NumField, TextField } from '@/components/num-field';
 import { Button, Card, Notice, Screen, Segmented, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { useSession } from '@/context/session';
 import { useSupplyTariffs } from '@/features/tariffs';
 import { useTheme } from '@/hooks/use-theme';
 import { fmtDate, fmtNum } from '@/lib/format';
@@ -16,6 +17,7 @@ export default function TariffScreen() {
   const c = useTheme();
   const { cups } = useLocalSearchParams<{ cups: string }>();
   const { cfg, current, save } = useSupplyTariffs(cups);
+  const { settings } = useSession();
   const [editing, setEditing] = useState<Editing>({ list: 'history', id: current.id });
   const [newDate, setNewDate] = useState('');
 
@@ -125,6 +127,7 @@ export default function TariffScreen() {
 
       {editing && editingTariff ? (
         <TariffForm
+          hasSolar={settings.hasSolar}
           key={editingTariff.id}
           t={editingTariff}
           isFirst={editing.list === 'history' && editingTariff.validFrom === cfg.history[0].validFrom && editingTariff.id === cfg.history[0].id}
@@ -146,12 +149,14 @@ export default function TariffScreen() {
 }
 
 function TariffForm({
+  hasSolar,
   t,
   isFirst,
   list,
   onChange,
   onDelete,
 }: {
+  hasSolar: boolean;
   t: Tariff;
   isFirst: boolean;
   list: 'history' | 'candidates';
@@ -210,7 +215,7 @@ function TariffForm({
       <T variant="label" style={{ marginTop: Spacing.two }}>
         Otros
       </T>
-      <NumField label="Compensación de excedentes" hint="Si tienes placas" unit="€/kWh" value={t.surplus} onChange={(n) => onChange({ surplus: n })} />
+      {hasSolar ? <NumField label="Compensación de excedentes" unit="€/kWh" value={t.surplus} onChange={(n) => onChange({ surplus: n })} /> : null}
       <NumField label="Descuento en energía" unit="%" value={t.discountPct} onChange={(n) => onChange({ discountPct: n })} />
       <NumField label="Servicios adicionales" hint="Mantenimiento, seguros…" unit="€/mes" value={t.extrasMonthly} onChange={(n) => onChange({ extrasMonthly: n })} />
       <NumField label="Alquiler del contador" unit="€/día" value={t.meterRental} onChange={(n) => onChange({ meterRental: n })} />

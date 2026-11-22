@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { UpdateCard } from '@/components/update';
 import { Button, Card, KeyValue, Screen, T } from '@/components/ui';
@@ -72,6 +72,13 @@ export default function SettingsScreen() {
             onSubmitEditing={addNif}
           />
           <Button title="Añadir" onPress={addNif} />
+        </View>
+      </Card>
+
+      <Card title="Mi instalación">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
+          <T style={{ flex: 1 }}>Tengo placas solares</T>
+          <Switch value={settings.hasSolar} onValueChange={(v) => updateSettings({ hasSolar: v })} trackColor={{ true: c.tint }} />
         </View>
       </Card>
 

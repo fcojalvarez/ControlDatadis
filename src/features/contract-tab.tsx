@@ -1,5 +1,6 @@
 import type { ContractDetail } from '@/api/datadis';
 import { Card, Empty, SavedDataNotice, KeyValue, Loading, Notice, Screen, T, UpdatedAt } from '@/components/ui';
+import { useSession } from '@/context/session';
 import { fmtDate, fmtNum } from '@/lib/format';
 
 import { useContract } from './queries';
@@ -47,7 +48,8 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
 }
 
 function ContractCards({ ct, title, compact }: { ct: ContractDetail; title: string; compact?: boolean }) {
-  const hasSelf = !!(ct.selfConsumptionTypeCode || ct.cau);
+  const { settings } = useSession();
+  const hasSelf = settings.hasSolar && !!(ct.selfConsumptionTypeCode || ct.cau);
   const installed = ct.installedCapacityKW ?? ct.installedCapacity;
   return (
     <>

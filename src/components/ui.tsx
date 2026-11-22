@@ -440,6 +440,7 @@ export function Stepper({
   onNext,
   canPrev,
   canNext,
+  onPressLabel,
 }: {
   label: string;
   sublabel?: string;
@@ -447,6 +448,8 @@ export function Stepper({
   onNext: () => void;
   canPrev: boolean;
   canNext: boolean;
+  /** Al tocar la fecha (p. ej. abrir el calendario) */
+  onPressLabel?: () => void;
 }) {
   const c = useTheme();
   const arrow = (enabled: boolean, txt: string, fn: () => void, a11y: string) => (
@@ -462,10 +465,18 @@ export function Stepper({
   return (
     <View style={styles.stepper}>
       {arrow(canPrev, '‹', onPrev, 'Anterior')}
-      <View style={{ flex: 1, alignItems: 'center' }}>
-        <T style={{ fontSize: 18, fontWeight: '700', textAlign: 'center' }}>{label}</T>
+      <Pressable
+        onPress={onPressLabel}
+        disabled={!onPressLabel}
+        accessibilityRole={onPressLabel ? 'button' : undefined}
+        accessibilityLabel={onPressLabel ? `${label}. Cambiar fechas` : undefined}
+        style={({ pressed }) => ({ flex: 1, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {onPressLabel ? <Ionicons name="calendar-outline" size={18} color={c.tint} /> : null}
+          <T style={{ fontSize: 18, fontWeight: '700', textAlign: 'center' }}>{label}</T>
+        </View>
         {sublabel ? <T variant="small" style={{ textAlign: 'center' }}>{sublabel}</T> : null}
-      </View>
+      </Pressable>
       {arrow(canNext, '›', onNext, 'Siguiente')}
     </View>
   );

@@ -11,6 +11,7 @@ type Settings = {
   prices: Prices; // precios por defecto para suministros sin tarifa propia (versiones anteriores)
   tariffs: Record<string, SupplyTariffs>; // tarifa de cada suministro (por CUPS)
   summaryLayout: { order: string[]; hidden: string[] }; // orden y tarjetas ocultas del Resumen
+  hasSolar: boolean; // tiene placas solares (si no, se oculta todo lo de autoconsumo)
   authorizedNifs: string[]; // NIFs que te han autorizado en Datadis
   activeNif: string | null; // null = mis suministros
 };
@@ -19,6 +20,7 @@ const DEFAULT_SETTINGS: Settings = {
   prices: DEFAULT_PRICES,
   tariffs: {},
   summaryLayout: { order: [], hidden: [] },
+  hasSolar: true,
   authorizedNifs: [],
   activeNif: null,
 };
