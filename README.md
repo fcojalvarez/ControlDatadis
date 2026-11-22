@@ -32,6 +32,8 @@ Datadis no informa de los cortes, así que se calcula así:
 4. El limitador sigue la curva de disparo de la norma **UNE 20317** (ICP-M): hasta +10 % de la potencia no corta (al menos 1 hora); con +20-50 % corta en minutos; con +50 %, en 30 s - 3 min; con el doble, en segundos (datos de la norma y de pruebas publicadas, p. ej. [redmilenium/UNE-20317](https://github.com/redmilenium/UNE-20317)). Por eso la probabilidad diaria se modela con una curva logística sobre el pico de 15 minutos: ~5 % si iguala tu potencia, ~27 % a +10 %, 50 % a +15 %, ~88 % a +25 %.
 5. Se combinan los días para obtener la probabilidad de al menos un corte en 30 días (usando los últimos 30 días y el mismo periodo del año anterior).
 
+Además estima **cuántas veces ha podido saltar en el último año**: la suma de las probabilidades diarias de corte, usando la potencia que tenías contratada cada día (según el histórico de contratos de Datadis), junto con los días en que casi seguro saltó (≥ 50 %) o pudo saltar (≥ 20 %). La tabla por potencias muestra cuántas veces habría saltado con cada potencia. Las previsiones (próximos 30 días, peor mes) usan siempre la potencia actual.
+
 También muestra tu **margen** concreto (a cuántos kW no salta, en minutos o en segundos), el riesgo por mes y por hora, los días más cerca del límite y una tabla **"¿y si cambio la potencia?"** con el riesgo y el coste anual de cada potencia, y la recomendada.
 
 

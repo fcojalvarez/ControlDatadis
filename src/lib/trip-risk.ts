@@ -62,8 +62,10 @@ export type DayRisk = {
   measured: boolean; // el pico viene del contador (máximo mensual)
   capped: boolean; // la estimación se ha limitado al máximo medido ese mes
   limitKW: number; // potencia contratada aplicable a ese pico
-  u: number; // estPeakKW / limitKW
-  p: number; // probabilidad de corte ese día
+  u: number; // estPeakKW / limitKW (potencia contratada ese día)
+  p: number; // probabilidad de corte ese día con la potencia que había entonces
+  uNow: number; // mismo pico respecto a la potencia contratada actual
+  pNow: number; // probabilidad con la potencia actual (para las previsiones)
   hour: number; // hora de inicio del pico
   period: string;
 };
@@ -75,10 +77,16 @@ export type TripRisk = {
   days: DayRisk[];
   pNext30: number;
   pTypicalMonth: number;
-  byMonth: { month: string; p: number; maxU: number; days: number }[];
+  byMonth: { month: string; p: number; maxU: number; days: number; expected: number }[];
+  expectedTrips: number; // veces estimadas que ha saltado (suma de probabilidades diarias)
+  likelyTripDays: DayRisk[]; // días en los que es muy probable que saltara (p ≥ 50 %)
+  possibleTripDays: DayRisk[]; // días en los que pudo saltar (p ≥ 20 %)
+  firstDay: string | null;
+  lastDay: string | null;
+  powerChanged: boolean; // la potencia contratada cambió dentro del periodo analizado
   worstMonth: { month: string; p: number } | null;
   byHour: number[]; // probabilidad media diaria de que el pico peligroso sea a esa hora (0..1)
-  riskyDays: number; // días con pico estimado por encima de lo contratado
+  riskyDays: number; // días con pico estimado por encima de la potencia actual
   exceedances: MaxPowerReading[]; // veces que el contador midió más que lo contratado
   maxMeasured: MaxPowerReading | null;
   contracted: number[];
@@ -107,6 +115,21 @@ function limitFor(period: string, contracted: number[]): number {
   return /^(P3|VALLE)$/i.test(period) ? p2 : p1;
 }
 
+/** Tramo de contrato con su potencia, para aplicar en cada día la potencia que había entonces */
+export type ContractPeriod = { from: string; to: string | null; kw: number[] }; // fechas YYYY-MM-DD
+
+function normDate(s: string | null | undefined): string | null {
+  const m = s?.match(/^(\d{4})[/-](\d{2})[/-](\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+export function contractPeriods(contracts: { startDate?: string | null; endDate?: string | null; contractedPowerkW?: number[] | null }[]): ContractPeriod[] {
+  return contracts
+    .filter((c) => c.contractedPowerkW?.length && (c.contractedPowerkW[0] ?? 0) > 0)
+    .map((c) => ({ from: normDate(c.startDate) ?? '0000-00-00', to: normDate(c.endDate), kw: c.contractedPowerkW as number[] }))
+    .sort((a, b) => (a.from < b.from ? -1 : 1));
+}
+
 function maxKey(r: MaxPowerReading): string {
   const m = r.date.match(/^(\d{4})[/-](\d{2})[/-](\d{2})/);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : r.date;
@@ -117,6 +140,7 @@ function maxKey(r: MaxPowerReading): string {
  * @param maxRows    potencias máximas del contador
  * @param contracted potencias contratadas [P1, P2] en kW
  * @param today      fecha de referencia (para la ventana de los próximos 30 días)
+ * @param history    histórico de contratos: en cada día se aplica la potencia vigente entonces
  */
 export function analyzeTripRisk(
   readings: Reading[],
@@ -124,9 +148,20 @@ export function analyzeTripRisk(
   maxRows: MaxPowerReading[],
   contracted: number[],
   today = new Date(),
+  history: ContractPeriod[] = [],
 ): TripRisk | null {
   if (!contracted.length || !(contracted[0] > 0) || !readings.length) return null;
   const toKW = 60 / intervalMin;
+  const kwCache = new Map<string, number[]>();
+  /** Potencia contratada vigente un día concreto (la actual si no hay histórico) */
+  const contractedOn = (day: string): number[] => {
+    let v = kwCache.get(day);
+    if (!v) {
+      v = history.find((h) => h.from <= day && (!h.to || day <= h.to))?.kw ?? contracted;
+      kwCache.set(day, v);
+    }
+    return v;
+  };
 
   // 1. Pico (por uso relativo a lo contratado) de cada día en la curva
   type Peak = { kw: number; u: number; hour: number; period: string; limit: number; month: string };
@@ -134,7 +169,7 @@ export function analyzeTripRisk(
   const dayMaxKW = new Map<string, number>();
   for (const r of readings) {
     const kw = r.kwh * toKW;
-    const limit = limitFor(r.period, contracted);
+    const limit = limitFor(r.period, contractedOn(r.day));
     const u = limit > 0 ? kw / limit : 0;
     const cur = dayPeaks.get(r.day);
     if (!cur || u > cur.u) dayPeaks.set(r.day, { kw, u, hour: r.hour, period: r.period, limit, month: r.month });
@@ -157,7 +192,8 @@ export function analyzeTripRisk(
   for (const m of maxRows) {
     const k = maxKey(m);
     const prev = measuredByDay.get(k);
-    if (!prev || m.kw / limitFor(m.period, contracted) > prev.kw / limitFor(prev.period, contracted)) measuredByDay.set(k, m);
+    const kw = contractedOn(k);
+    if (!prev || m.kw / limitFor(m.period, kw) > prev.kw / limitFor(prev.period, kw)) measuredByDay.set(k, m);
   }
   // El contador mide el máximo real de 15 min de cada mes: ningún día de ese mes puede superarlo
   const monthMaxKW = new Map<string, number>();
@@ -180,7 +216,7 @@ export function analyzeTripRisk(
     let period = pk.period;
     const m = measuredByDay.get(day);
     if (m) {
-      const mLimit = limitFor(m.period, contracted);
+      const mLimit = limitFor(m.period, contractedOn(day));
       if (m.kw / mLimit >= est / limit) {
         est = m.kw;
         limit = mLimit;
@@ -191,8 +227,10 @@ export function analyzeTripRisk(
     }
     const u = est / limit;
     const p = dayProbability(u);
-    hourAcc[hour] += p;
-    days.push({ day, month: pk.month, avgPeakKW: pk.kw, estPeakKW: est, measured, capped: capped && !measured, limitKW: limit, u, p, hour, period });
+    const uNow = est / limitFor(period, contracted);
+    const pNow = dayProbability(uNow);
+    hourAcc[hour] += pNow;
+    days.push({ day, month: pk.month, avgPeakKW: pk.kw, estPeakKW: est, measured, capped: capped && !measured, limitKW: limit, u, p, uNow, pNow, hour, period });
   }
 
   // 4. Agregados
@@ -200,7 +238,13 @@ export function analyzeTripRisk(
   for (const d of days) byMonthMap.set(d.month, [...(byMonthMap.get(d.month) ?? []), d]);
   const byMonth = [...byMonthMap.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([month, ds]) => ({ month, p: probabilityOver(ds.map((d) => d.p)), maxU: Math.max(...ds.map((d) => d.u)), days: ds.length }));
+    .map(([month, ds]) => ({
+      month,
+      p: probabilityOver(ds.map((d) => d.pNow)),
+      maxU: Math.max(...ds.map((d) => d.uNow)),
+      days: ds.length,
+      expected: ds.reduce((a, d) => a + d.p, 0),
+    }));
   const fullMonths = byMonth.filter((m) => m.days >= 20);
   const worstMonth = (fullMonths.length ? fullMonths : byMonth).reduce<{ month: string; p: number } | null>(
     (w, m) => (!w || m.p > w.p ? { month: m.month, p: m.p } : w),
@@ -216,9 +260,11 @@ export function analyzeTripRisk(
     return (ts > t - 31 * dayMs && ts <= t) || (ts >= t - 365 * dayMs && ts <= t - 335 * dayMs);
   };
   const windowDays = days.filter((d) => inWindow(d.day));
-  const pNext30 = probabilityOver((windowDays.length >= 7 ? windowDays : days.slice(-30)).map((d) => d.p));
+  // Las previsiones usan siempre la potencia contratada actual
+  const pNext30 = probabilityOver((windowDays.length >= 7 ? windowDays : days.slice(-30)).map((d) => d.pNow));
 
-  const exceedances = maxRows.filter((m) => m.kw > limitFor(m.period, contracted));
+  const exceedances = maxRows.filter((m) => m.kw > limitFor(m.period, contractedOn(maxKey(m))));
+  const kwSet = new Set(days.map((d) => contractedOn(d.day).join('/')));
   const maxMeasured = maxRows.reduce<MaxPowerReading | null>((a, m) => (!a || m.kw > a.kw ? m : a), null);
 
   return {
@@ -227,11 +273,17 @@ export function analyzeTripRisk(
     intervalMin,
     days,
     pNext30,
-    pTypicalMonth: probabilityOver(days.map((d) => d.p)),
+    pTypicalMonth: probabilityOver(days.map((d) => d.pNow)),
     byMonth,
     worstMonth,
     byHour: hourAcc.map((v) => (days.length ? v / days.length : 0)),
-    riskyDays: days.filter((d) => d.u >= 1).length,
+    riskyDays: days.filter((d) => d.uNow >= 1).length,
+    expectedTrips: days.reduce((a, d) => a + d.p, 0),
+    likelyTripDays: days.filter((d) => d.p >= 0.5),
+    possibleTripDays: days.filter((d) => d.p >= 0.2),
+    firstDay: days[0]?.day ?? null,
+    lastDay: days[days.length - 1]?.day ?? null,
+    powerChanged: kwSet.size > 1,
     exceedances,
     maxMeasured,
     contracted,
@@ -242,11 +294,19 @@ export function analyzeTripRisk(
 export const STANDARD_POWERS = [2.3, 3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5, 13.86, 14.49];
 
 /** Riesgo si se contratase otra potencia (misma potencia en P1 y P2) */
-export function whatIf(risk: TripRisk, powerKW: number): { pTypical: number; pWorst: number } {
+export function whatIf(
+  risk: TripRisk,
+  powerKW: number,
+): { pTypical: number; pWorst: number; expectedTrips: number; likelyDays: number } {
   const ps = risk.days.map((d) => dayProbability(d.estPeakKW / powerKW));
   const byMonth = new Map<string, number[]>();
   risk.days.forEach((d, i) => byMonth.set(d.month, [...(byMonth.get(d.month) ?? []), ps[i]]));
   let pWorst = 0;
   for (const arr of byMonth.values()) if (arr.length >= 20 || byMonth.size === 1) pWorst = Math.max(pWorst, probabilityOver(arr));
-  return { pTypical: probabilityOver(ps), pWorst };
+  return {
+    pTypical: probabilityOver(ps),
+    pWorst,
+    expectedTrips: ps.reduce((a, p) => a + p, 0),
+    likelyDays: ps.filter((p) => p >= 0.5).length,
+  };
 }
