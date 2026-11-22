@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import { LegendItem, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -26,6 +26,8 @@ type Props = {
   mode?: 'stacked' | 'grouped';
   legend?: { color: string; label: string }[];
   totalLabel?: string;
+  /** Marca (punto) opcional sobre cada barra, en la misma escala (p. ej. pico medido por el contador) */
+  markers?: ({ value: number; color: string } | null)[];
 };
 
 const AXIS_W = 40;
@@ -50,6 +52,7 @@ export function BarChart({
   mode = 'stacked',
   legend,
   totalLabel = 'Total',
+  markers = [],
 }: Props) {
   const c = useTheme();
   const [width, setWidth] = useState(0);
@@ -59,7 +62,9 @@ export function BarChart({
 
   const totals = data.map((d) => d.segments.reduce((s, x) => s + x.value, 0));
   const peaks = data.map((d) => (mode === 'stacked' ? d.segments.reduce((s, x) => s + x.value, 0) : Math.max(0, ...d.segments.map((x) => x.value))));
-  const maxVal = niceMax(Math.max(0, ...peaks, ...referenceLines.map((r) => r.value)) * 1.05);
+  const maxVal = niceMax(
+    Math.max(0, ...peaks, ...referenceLines.map((r) => r.value), ...markers.map((m) => m?.value ?? 0)) * 1.05,
+  );
   const plotH = height - BOTTOM - TOP;
 
   const available = Math.max(0, width - AXIS_W);
@@ -139,6 +144,16 @@ export function BarChart({
                       const y1 = y(acc);
                       return <Rect key={j} x={x0} y={y1} width={bw} height={Math.max(0.5, y0 - y1)} fill={s.color} rx={bw > 6 ? 2 : 0} />;
                     })}
+                    {markers[i] ? (
+                      <Circle
+                        cx={i * slot + slot / 2}
+                        cy={y(markers[i]!.value)}
+                        r={Math.max(3.5, Math.min(6, slot * 0.35))}
+                        fill={markers[i]!.color}
+                        stroke={c.card}
+                        strokeWidth={2}
+                      />
+                    ) : null}
                     {i % every === 0 && (
                       <SvgText x={i * slot + slot / 2} y={height - 7} fontSize={11} fill={c.textSecondary} textAnchor="middle">
                         {d.label}

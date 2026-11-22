@@ -10,11 +10,18 @@ type Status = 'loading' | 'loggedOut' | 'loggedIn';
 type Settings = {
   prices: Prices; // precios por defecto para suministros sin tarifa propia (versiones anteriores)
   tariffs: Record<string, SupplyTariffs>; // tarifa de cada suministro (por CUPS)
+  summaryLayout: { order: string[]; hidden: string[] }; // orden y tarjetas ocultas del Resumen
   authorizedNifs: string[]; // NIFs que te han autorizado en Datadis
   activeNif: string | null; // null = mis suministros
 };
 
-const DEFAULT_SETTINGS: Settings = { prices: DEFAULT_PRICES, tariffs: {}, authorizedNifs: [], activeNif: null };
+const DEFAULT_SETTINGS: Settings = {
+  prices: DEFAULT_PRICES,
+  tariffs: {},
+  summaryLayout: { order: [], hidden: [] },
+  authorizedNifs: [],
+  activeNif: null,
+};
 const SETTINGS_KEY = 'settings';
 const COOLDOWN_KEY = 'datadis:cooldown';
 
@@ -78,7 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ]);
       // Si Datadis limitó las consultas en una sesión anterior, se respeta la pausa
       client.restoreCooldown(cooldown.until, cooldown.step);
-      setSettings({ ...DEFAULT_SETTINGS, ...s, prices: { ...DEFAULT_PRICES, ...s.prices }, tariffs: s.tariffs ?? {} });
+      setSettings({ ...DEFAULT_SETTINGS, ...s, prices: { ...DEFAULT_PRICES, ...s.prices }, tariffs: s.tariffs ?? {}, summaryLayout: { ...DEFAULT_SETTINGS.summaryLayout, ...s.summaryLayout } });
       if (saved) {
         // El token se obtiene de forma perezosa en la primera consulta
         auth.creds = saved;

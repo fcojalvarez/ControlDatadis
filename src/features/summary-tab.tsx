@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart, SplitBar } from '@/components/bar-chart';
 import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import { estimateCost, normalize, pctChange, summarize } from '@/lib/consumption';
 import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
@@ -17,6 +18,77 @@ import { OfflineDataCard } from './offline-data';
 import { TripRiskSummaryCard } from './trip-risk';
 import { useSupplyTariffs } from './tariffs';
 import { rangeMonths, type SupplyRef } from './types';
+
+type SectionId = 'plomos' | 'mes' | 'pasado' | 'anio' | 'consejos' | 'historico';
+
+const SECTIONS: { id: SectionId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'plomos', label: '¿Saltarán los plomos?', icon: 'warning-outline' },
+  { id: 'mes', label: 'Mes en curso', icon: 'today-outline' },
+  { id: 'pasado', label: 'Mes pasado', icon: 'calendar-outline' },
+  { id: 'anio', label: 'Último año', icon: 'bar-chart-outline' },
+  { id: 'consejos', label: 'Consejos', icon: 'bulb-outline' },
+  { id: 'historico', label: 'Histórico en el móvil', icon: 'cloud-download-outline' },
+];
+
+/** Orden guardado + las tarjetas nuevas que no estuvieran en él */
+function fullOrder(saved: string[]): SectionId[] {
+  const valid = saved.filter((id): id is SectionId => SECTIONS.some((x) => x.id === id));
+  return [...valid, ...SECTIONS.map((x) => x.id).filter((id) => !valid.includes(id))];
+}
+
+/** Editor del orden y visibilidad de las tarjetas del Resumen */
+function LayoutEditor() {
+  const c = useTheme();
+  const { settings, updateSettings } = useSession();
+  const [open, setOpen] = useState(false);
+  const order = fullOrder(settings.summaryLayout.order);
+  const hidden = new Set(settings.summaryLayout.hidden);
+  const save = (o: SectionId[], h: Set<string>) => updateSettings({ summaryLayout: { order: o, hidden: [...h] } });
+  const move = (i: number, d: -1 | 1) => {
+    const o = [...order];
+    const j = i + d;
+    if (j < 0 || j >= o.length) return;
+    [o[i], o[j]] = [o[j], o[i]];
+    save(o, hidden);
+  };
+  const toggle = (id: SectionId) => {
+    const h = new Set(hidden);
+    if (h.has(id)) h.delete(id);
+    else h.add(id);
+    save(order, h);
+  };
+  if (!open) {
+    return (
+      <Pressable onPress={() => setOpen(true)} style={styles.customize} accessibilityRole="button">
+        <Ionicons name="options-outline" size={18} color={c.tint} />
+        <T style={{ color: c.tint, fontWeight: '700' }}>Personalizar</T>
+      </Pressable>
+    );
+  }
+  return (
+    <Card title="Personalizar" right={<T style={{ color: c.tint, fontWeight: '700' }} onPress={() => setOpen(false)}>Hecho</T>}>
+      {order.map((id, i) => {
+        const sec = SECTIONS.find((x) => x.id === id)!;
+        const off = hidden.has(id);
+        return (
+          <View key={id} style={[styles.editRow, { borderTopColor: c.border }]}>
+            <Ionicons name={sec.icon} size={20} color={off ? c.textSecondary : c.tint} />
+            <T style={{ flex: 1, color: off ? c.textSecondary : c.text, textDecorationLine: off ? 'line-through' : 'none' }}>{sec.label}</T>
+            <Pressable onPress={() => toggle(id)} hitSlop={8} accessibilityLabel={off ? 'Mostrar' : 'Ocultar'}>
+              <Ionicons name={off ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textSecondary} />
+            </Pressable>
+            <Pressable onPress={() => move(i, -1)} disabled={i === 0} hitSlop={8} accessibilityLabel="Subir">
+              <Ionicons name="chevron-up" size={22} color={i === 0 ? c.border : c.text} />
+            </Pressable>
+            <Pressable onPress={() => move(i, 1)} disabled={i === order.length - 1} hitSlop={8} accessibilityLabel="Bajar">
+              <Ionicons name="chevron-down" size={22} color={i === order.length - 1 ? c.border : c.text} />
+            </Pressable>
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
 
 export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
   const c = useTheme();
@@ -62,19 +134,13 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const prevName = fmtMonthLong(prev).split(' ')[0];
   const legendLine = PERIODS.map((p) => `${PERIOD_LABELS[p]} ${fmtNum(prevS.total ? (prevS.byPeriod[p] / prevS.total) * 100 : 0, 0)} %`).join(' · ');
 
-  return (
-    <Screen refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
-      {q.loading && !yearS.total && !curS.total ? <Loading text="Descargando tu consumo…" /> : null}
-      {q.loading && (yearS.total > 0 || curS.total > 0) ? (
-        <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} />
-      ) : null}
-      <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
-      {nothing && !q.error ? <Notice tone="warning">Datadis aún no tiene datos de consumo de este suministro.</Notice> : null}
+  const { settings } = useSession();
+  const orderedIds = fullOrder(settings.summaryLayout.order).filter((id) => !settings.summaryLayout.hidden.includes(id));
 
-      <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />
-
-      {/* ---------- Este mes ---------- */}
-      {curS.total > 0 && (
+  // Tarjetas del Resumen (el usuario puede reordenarlas u ocultarlas)
+  const sections: Record<SectionId, ReactNode> = {
+    plomos: <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />,
+    mes: curS.total > 0 ? (
         <Card title={cap(fmtMonthLong(cur).split(' ')[0])} right={<T variant="small">hasta el día {Number(curS.lastDay?.slice(8))}</T>} onPress={() => onOpen('consumo')}>
           <View style={styles.split}>
             <View>
@@ -87,10 +153,8 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
             </View>
           </View>
         </Card>
-      )}
-
-      {/* ---------- Mes pasado ---------- */}
-      {prevS.total > 0 && (
+      ) : null,
+    pasado: prevS.total > 0 ? (
         <Card title={cap(prevName)} onPress={() => onOpen('consumo')}>
           <View style={styles.split}>
             <View>
@@ -105,10 +169,8 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
           <SplitBar parts={PERIODS.map((p) => ({ value: prevS.byPeriod[p], color: periodColors[p] }))} height={12} />
           <T variant="small">{legendLine}</T>
         </Card>
-      )}
-
-      {/* ---------- Último año ---------- */}
-      {yearS.total > 0 && (
+      ) : null,
+    anio: yearS.total > 0 ? (
         <Card
           title="Último año"
           right={
@@ -127,18 +189,31 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
             height={150}
           />
         </Card>
-      )}
-
-      {/* ---------- Consejos ---------- */}
-      {tips.length > 0 && (
+      ) : null,
+    consejos: tips.length > 0 ? (
         <Card title="Consejos" info="Recomendaciones automáticas a partir de tus datos del último año. Son orientativas.">
           {tips.map((t, i) => (
             <TipRow key={i} tip={t} />
           ))}
         </Card>
-      )}
+      ) : null,
+    historico: <OfflineDataCard supply={supply} />,
+  };
 
-      <OfflineDataCard supply={supply} />
+  return (
+    <Screen refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
+      {q.loading && !yearS.total && !curS.total ? <Loading text="Descargando tu consumo…" /> : null}
+      {q.loading && (yearS.total > 0 || curS.total > 0) ? (
+        <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} />
+      ) : null}
+      <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
+      {nothing && !q.error ? <Notice tone="warning">Datadis aún no tiene datos de consumo de este suministro.</Notice> : null}
+
+      {orderedIds.map((id) => (
+        <Fragment key={id}>{sections[id]}</Fragment>
+      ))}
+
+      <LayoutEditor />
     </Screen>
   );
 }
@@ -167,6 +242,8 @@ function TipRow({ tip }: { tip: Tip }) {
 const styles = StyleSheet.create({
   split: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: Spacing.two },
   tip: { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  customize: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
 });
 
 type Tip = { title: string; text: string; tone: 'info' | 'warning' | 'good' };
