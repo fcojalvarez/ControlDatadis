@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { View } from 'react-native';
 
 import { ProgressBar } from '@/components/bar-chart';
@@ -29,42 +30,39 @@ export function useHistorySync(supply: SupplyRef) {
   return useConsumptionMonths(supply, months, 0, PRIORITY.HISTORY);
 }
 
-/** Estado del histórico guardado en el móvil */
+/** Estado del histórico guardado en el móvil (compacto) */
 export function OfflineDataCard({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
   const h = useHistorySync(supply);
   const months = useMemo(() => historyMonths(supply), [supply]);
   const withData = months.filter((k) => (h.months[k]?.length ?? 0) > 0);
   const finished = h.pending === 0 && !h.loading;
+  const info =
+    'El histórico se descarga solo, mes a mes y poco a poco, para no superar el límite de consultas de Datadis. ' +
+    'Cada mes se guarda en el móvil nada más llegar y se puede consultar aunque Datadis no funcione.' +
+    (withData.length ? `\n\nGuardados: ${withData.length} meses con consumo (${fmtMonthLong(withData[0])} – ${fmtMonthLong(withData[withData.length - 1])}).` : '');
 
   return (
     <Card
-      title="Histórico guardado en el móvil"
-      info="Para no superar el límite de consultas de Datadis, el histórico se descarga solo, mes a mes y poco a poco, empezando por los meses más recientes. Cada mes se guarda nada más llegar, así que aunque cierres la app no se pierde nada y continúa la próxima vez. Lo guardado se puede consultar aunque Datadis no funcione.">
-      <ProgressBar value={h.done} max={h.total} color={finished ? c.p3 : c.tint} />
-      <T variant="small">
-        {h.done} de {h.total} meses revisados
-        {h.pending ? ` · faltan ${h.pending}` : ''}
-      </T>
-      {withData.length ? (
-        <T variant="small" style={{ color: c.text }}>
-          Tienes guardados {withData.length} meses con consumo ({fmtMonthLong(withData[0])} – {fmtMonthLong(withData[withData.length - 1])}).
-        </T>
-      ) : null}
+      title="Histórico en el móvil"
+      info={info}
+      right={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name={finished ? 'cloud-done-outline' : 'cloud-download-outline'} size={18} color={finished ? c.p3 : c.tint} />
+          <T style={{ fontWeight: '700' }}>
+            {h.done}/{h.total}
+          </T>
+        </View>
+      }>
+      {!finished ? <ProgressBar value={h.done} max={h.total} color={c.tint} /> : null}
       {h.error ? (
-        <View style={{ gap: 6 }}>
-          <T variant="small" style={{ color: c.warning }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <T variant="small" style={{ color: c.warning, flex: 1 }}>
             {h.error}
           </T>
-          {!/limitado/.test(h.error) ? <Button title="Reintentar ahora" variant="secondary" onPress={h.retry} /> : null}
+          {!/limitado/.test(h.error) ? <Button title="Reintentar" variant="secondary" onPress={h.retry} /> : null}
         </View>
-      ) : !finished ? (
-        <T variant="small">Descargando poco a poco en segundo plano…</T>
-      ) : (
-        <T variant="small" style={{ color: c.p3, fontWeight: '600' }}>
-          Histórico completo.
-        </T>
-      )}
+      ) : null}
     </Card>
   );
 }

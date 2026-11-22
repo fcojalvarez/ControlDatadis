@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { StyleSheet, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
 import { Gauge } from '@/components/gauge';
@@ -89,38 +90,42 @@ const DISCLAIMER =
 export function TripRiskSummaryCard({ supply, onOpen }: { supply: SupplyRef; onOpen: () => void }) {
   const c = useTheme();
   const { risk, loading, noContract } = useTripRisk(supply);
+  const p = risk?.pNext30 ?? 0;
+  const color = levelColor(c, p);
   return (
-    <Card title="¿Me saltarán los plomos?" subtitle="Probabilidad de que salte el limitador en los próximos 30 días" info={DISCLAIMER}>
+    <Card title="¿Saltarán los plomos?" info={risk ? `${headline(risk)}\n\n${DISCLAIMER}` : DISCLAIMER} onPress={onOpen}>
       {risk ? (
-        <>
-          <Gauge value={risk.pNext30} label={`Riesgo ${riskLevel(risk.pNext30).label.toLowerCase()}`} size={220} />
-          <T style={{ textAlign: 'center' }}>{headline(risk)}</T>
-          <View style={{ backgroundColor: c.backgroundElement, borderRadius: 12, padding: 12, alignItems: 'center' }}>
-            <T variant="label">En el último año ha podido saltar</T>
-            <T variant="value" color={tripsColor(c, risk.expectedTrips)}>
-              {fmtTrips(risk.expectedTrips)}
-            </T>
-            {risk.likelyTripDays.length ? (
-              <T variant="small">{`${risk.likelyTripDays.length} ${risk.likelyTripDays.length === 1 ? 'día' : 'días'} en los que es muy probable que saltara`}</T>
-            ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.three }}>
+          <Gauge value={p} size={120} />
+          <View style={{ flex: 1 }}>
+            <T style={{ fontSize: 34, lineHeight: 40, fontWeight: '800', color }}>{fmtPct(p)}</T>
+            <T style={{ fontWeight: '700', color }}>Riesgo {riskLevel(p).label.toLowerCase()}</T>
+            <T variant="small">próximos 30 días</T>
           </View>
-          {risk.worstMonth && risk.worstMonth.p > risk.pNext30 + 0.05 ? (
-            <T variant="small" style={{ textAlign: 'center' }}>
-              En tu peor mes ({fmtMonthLong(risk.worstMonth.month)}) llegó al {fmtPct(risk.worstMonth.p)}.
-            </T>
-          ) : null}
-          <T style={{ color: c.tint, fontWeight: '700', textAlign: 'center' }} onPress={onOpen}>
-            Ver análisis completo y qué potencia te conviene ›
-          </T>
-        </>
+        </View>
       ) : loading ? (
-        <InlineLoading text="Calculando el riesgo con tu consumo del último año…" />
+        <InlineLoading text="Calculando…" />
       ) : (
-        <T variant="small">{noContract ? 'No se puede calcular: la distribuidora no ha devuelto la potencia contratada.' : 'No hay datos suficientes para calcular el riesgo.'}</T>
+        <T variant="small">{noContract ? 'Falta la potencia contratada para calcularlo.' : 'Aún no hay datos suficientes.'}</T>
       )}
+      {risk ? (
+        <View style={[styles.pill, { backgroundColor: c.backgroundElement }]}>
+          <Ionicons name="time-outline" size={16} color={c.textSecondary} />
+          <T variant="small" style={{ flex: 1 }}>
+            Último año
+          </T>
+          <T style={{ fontWeight: '700', color: tripsColor(c, risk.expectedTrips) }}>
+            {risk.expectedTrips < 0.5 ? 'No ha saltado' : `${fmtTrips(risk.expectedTrips)}`}
+          </T>
+        </View>
+      ) : null}
     </Card>
   );
 }
+
+const styles = StyleSheet.create({
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+});
 
 /** Análisis completo para la pestaña Potencia */
 export function TripRiskSection({ supply }: { supply: SupplyRef }) {

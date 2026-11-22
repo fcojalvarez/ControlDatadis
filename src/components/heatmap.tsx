@@ -31,6 +31,7 @@ export function Heatmap({ rows, rowNames, matrix, formatValue }: Props) {
 
   return (
     <View onLayout={onLayout}>
+      {sel ? (
       <View style={{ minHeight: 40, justifyContent: 'center', backgroundColor: c.backgroundElement, borderRadius: 10, padding: 10, marginBottom: 6 }}>
         {sel ? (
           <T>
@@ -40,10 +41,9 @@ export function Heatmap({ rows, rowNames, matrix, formatValue }: Props) {
             {'  '}
             {formatValue(matrix[sel.r][sel.h])} de media
           </T>
-        ) : (
-          <T variant="small">Toca una casilla para ver el consumo medio de esa hora</T>
-        )}
+        ) : null}
       </View>
+      ) : null}
       {width > 0 && (
         <Svg width={width} height={height}>
           {matrix.map((row, r) =>

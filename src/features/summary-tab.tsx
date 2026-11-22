@@ -1,12 +1,13 @@
-import { useMemo } from 'react';
-import { View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { BarChart, ProgressBar, SplitBar } from '@/components/bar-chart';
-import { Card, Delta, SavedDataNotice, InlineLoading, KeyValue, Loading, Notice, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
+import { BarChart, SplitBar } from '@/components/bar-chart';
+import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { estimateCost, normalize, normalizeMaxPower, pctChange, summarize } from '@/lib/consumption';
-import { WEEKDAYS, fmtDate, fmtEur, fmtKW, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
+import { estimateCost, normalize, pctChange, summarize } from '@/lib/consumption';
+import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 
 import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
@@ -53,155 +54,120 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const prevCost = estimateCost(prevS.byPeriod, prevS.surplus, prevS.days, contractedKW, tariff);
   const yearCost = estimateCost(yearS.byPeriod, yearS.surplus, yearS.days, contractedKW, tariff);
 
-  const maxRows = useMemo(() => (maxp.data ? normalizeMaxPower(maxp.data.rows) : []), [maxp.data]);
-  const maxPeak = maxRows.reduce<(typeof maxRows)[number] | null>((m, r) => (!m || r.kw > m.kw ? r : m), null);
-  const p1 = contractedKW[0] ?? 0;
 
   const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: tariff.energy }), [yearS, curS, tariff.energy]);
 
   const nothing = !q.loading && !curS.total && !prevS.total && !yearS.total;
 
+  const prevName = fmtMonthLong(prev).split(' ')[0];
+  const legendLine = PERIODS.map((p) => `${PERIOD_LABELS[p]} ${fmtNum(prevS.total ? (prevS.byPeriod[p] / prevS.total) * 100 : 0, 0)} %`).join(' · ');
+
   return (
     <Screen refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
-      {q.loading && !yearS.total && !curS.total ? (
-        <Loading text="Descargando tu consumo de Datadis mes a mes, empezando por el más reciente. Los datos irán apareciendo poco a poco." />
-      ) : null}
+      {q.loading && !yearS.total && !curS.total ? <Loading text="Descargando tu consumo…" /> : null}
       {q.loading && (yearS.total > 0 || curS.total > 0) ? (
-        <InlineLoading text={q.pending ? `Descargando de Datadis: faltan ${q.pending} de ${q.total} meses…` : 'Actualizando con Datadis…'} />
+        <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} />
       ) : null}
       <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
-      {nothing && !q.error ? <Notice tone="warning">Datadis todavía no tiene datos de consumo para este suministro.</Notice> : null}
+      {nothing && !q.error ? <Notice tone="warning">Datadis aún no tiene datos de consumo de este suministro.</Notice> : null}
 
       <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />
 
       {/* ---------- Este mes ---------- */}
       {curS.total > 0 && (
-        <Card title={`Este mes · ${fmtMonthLong(cur)}`} subtitle={`Hasta el ${fmtDate(curS.lastDay)} (${curS.days} días)`}>
-          <T variant="hero">{fmtKWh(curS.total, 0)}</T>
-          <Delta pct={pctChange(curS.total, prevSameDays)} label={`que los mismos días de ${fmtMonthLong(prev).split(' ')[0]} (${fmtKWh(prevSameDays, 0)})`} />
-          <Row style={{ marginTop: Spacing.two }}>
-            <Stat label="Media diaria" value={fmtKWh(curS.avgPerDay, 1)} />
-            <Stat label="Previsión del mes" value={fmtKWh(curS.avgPerDay * daysInMonth(cur), 0)} sub="si sigues a este ritmo" />
-          </Row>
+        <Card title={cap(fmtMonthLong(cur).split(' ')[0])} right={<T variant="small">hasta el día {Number(curS.lastDay?.slice(8))}</T>} onPress={() => onOpen('consumo')}>
+          <View style={styles.split}>
+            <View>
+              <T variant="hero">{fmtKWh(curS.total, 0)}</T>
+              <Delta pct={pctChange(curS.total, prevSameDays)} label={`que ${prevName}`} />
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <T variant="small">Previsión</T>
+              <T variant="value">{fmtKWh(curS.avgPerDay * daysInMonth(cur), 0)}</T>
+            </View>
+          </View>
         </Card>
       )}
 
       {/* ---------- Mes pasado ---------- */}
       {prevS.total > 0 && (
-        <Card title={`Mes pasado · ${fmtMonthLong(prev)}`}>
-          <Row>
-            <Stat label="Consumo" value={fmtKWh(prevS.total, 0)} delta={{ pct: prevYoyS.days >= prevS.days * 0.9 ? pctChange(prevS.total, prevYoyS.total) : null, label: `que ${fmtMonthLong(addMonths(prev, -12))}` }} />
-            <Stat label="Coste estimado" value={fmtEur(prevCost.total)} sub="con impuestos" />
-          </Row>
-          <SplitBar parts={PERIODS.map((p) => ({ value: prevS.byPeriod[p], color: periodColors[p] }))} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            {PERIODS.map((p) => (
-              <View key={p} style={{ alignItems: p === 'P1' ? 'flex-start' : p === 'P3' ? 'flex-end' : 'center' }}>
-                <T variant="small" style={{ color: periodColors[p], fontWeight: '700' }}>
-                  {PERIOD_LABELS[p]}
-                </T>
-                <T variant="small">
-                  {fmtNum(prevS.total ? (prevS.byPeriod[p] / prevS.total) * 100 : 0, 0)} % · {fmtKWh(prevS.byPeriod[p], 0)}
-                </T>
-              </View>
-            ))}
+        <Card title={cap(prevName)} onPress={() => onOpen('consumo')}>
+          <View style={styles.split}>
+            <View>
+              <T variant="value">{fmtKWh(prevS.total, 0)}</T>
+              <Delta
+                pct={prevYoyS.days >= prevS.days * 0.9 ? pctChange(prevS.total, prevYoyS.total) : null}
+                label={`que hace un año`}
+              />
+            </View>
+            <T variant="value">{fmtEur(prevCost.total)}</T>
           </View>
+          <SplitBar parts={PERIODS.map((p) => ({ value: prevS.byPeriod[p], color: periodColors[p] }))} height={12} />
+          <T variant="small">{legendLine}</T>
         </Card>
       )}
 
       {/* ---------- Último año ---------- */}
       {yearS.total > 0 && (
-        <Card title="Último año" subtitle={`${fmtMonthLong(data.last12Keys[0])} – ${fmtMonthLong(data.last12Keys[data.last12Keys.length - 1])}`}>
-          <Row>
-            <Stat label="Consumo" value={fmtKWh(yearS.total, 0)} sub={`${fmtKWh(yearS.total / Math.max(1, yearS.monthly.length), 0)} al mes de media`} />
-            <Stat label="Coste estimado" value={fmtEur(yearCost.total)} sub={`${fmtEur(yearCost.total / Math.max(1, yearS.monthly.length))} al mes`} />
-          </Row>
+        <Card
+          title="Último año"
+          right={
+            <T variant="small" style={{ fontWeight: '700', color: c.text }}>
+              {fmtKWh(yearS.total, 0)} · {fmtEur(yearCost.total)}
+            </T>
+          }
+          onPress={() => onOpen('consumo')}>
           <BarChart
             data={[...yearS.monthly, ...(curS.monthly.length ? curS.monthly : [])].map((m) => ({
               label: fmtMonthShort(m.key).split(' ')[0],
               detail: fmtMonthLong(m.key) + (m.key === cur ? ' (en curso)' : ''),
-              segments: PERIODS.map((p) => ({ value: m[p], color: periodColors[p], name: p })),
+              segments: PERIODS.map((p) => ({ value: m[p], color: periodColors[p], name: PERIOD_LABELS[p] })),
             }))}
             formatValue={(v) => fmtKWh(v, 0)}
-            height={180}
-            legend={PERIODS.map((p) => ({ color: periodColors[p], label: PERIOD_LABELS[p] }))}
+            height={150}
           />
-          {yearS.maxDay && (
-            <KeyValue k="Mes de mayor consumo" v={fmtMonthLong(yearS.monthly.reduce((a, b) => (b.total > a.total ? b : a)).key)} />
-          )}
-          {yearS.hasSelfConsumption && (
-            <KeyValue k="Excedentes vertidos (autoconsumo)" v={fmtKWh(yearS.surplus, 0)} hint={`Generación ${fmtKWh(yearS.generation, 0)}`} />
-          )}
-          <T variant="small" style={{ color: c.tint, fontWeight: '700' }} onPress={() => onOpen('consumo')}>
-            Ver todo el detalle de consumo ›
-          </T>
-        </Card>
-      )}
-
-      {/* ---------- Potencia ---------- */}
-      <Card title="Potencia" subtitle="Últimos 12 meses">
-        {maxp.loading && !maxp.data ? <InlineLoading text="Consultando potencias máximas…" /> : null}
-        {p1 > 0 && maxPeak ? (
-          <>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              <View>
-                <T variant="label">Pico máximo</T>
-                <T variant="value" color={maxPeak.kw > p1 ? c.danger : undefined}>
-                  {fmtKW(maxPeak.kw, 2)}
-                </T>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <T variant="label">Contratada</T>
-                <T variant="value">{fmtKW(p1, 2)}</T>
-              </View>
-            </View>
-            <ProgressBar value={maxPeak.kw} max={p1} color={maxPeak.kw > p1 ? c.danger : maxPeak.kw / p1 > 0.85 ? c.warning : c.tint} />
-            <T variant="small">
-              Usas como máximo el {fmtNum((maxPeak.kw / p1) * 100, 0)} % de tu potencia ({fmtDate(maxPeak.date)} a las {maxPeak.time}).
-            </T>
-          </>
-        ) : !maxp.loading ? (
-          <T variant="small">{contractedKW.length ? 'Sin datos de potencia máxima.' : 'Sin datos de contrato.'}</T>
-        ) : null}
-        <T variant="small" style={{ color: c.tint, fontWeight: '700' }} onPress={() => onOpen('potencia')}>
-          Ver potencias ›
-        </T>
-      </Card>
-
-      {/* ---------- Contrato ---------- */}
-      {ct && (
-        <Card title="Tu contrato">
-          <KeyValue k="Comercializadora" v={ct.marketer || '—'} />
-          <KeyValue k="Potencia contratada" v={contractedKW.length ? contractedKW.map((k, i) => `P${i + 1} ${fmtNum(k, 2)} kW`).join('\n') : '—'} />
-          <KeyValue k="Tarifa" v={[ct.accessFare, ct.timeDiscrimination].filter(Boolean).join(' · ') || '—'} />
-          <KeyValue k="Desde" v={fmtDate(ct.startDate)} />
-          {ct.selfConsumptionTypeDesc ? <KeyValue k="Autoconsumo" v={ct.selfConsumptionTypeDesc} /> : null}
-          <T variant="small" style={{ color: c.tint, fontWeight: '700' }} onPress={() => onOpen('contrato')}>
-            Ver contrato completo ›
-          </T>
         </Card>
       )}
 
       {/* ---------- Consejos ---------- */}
       {tips.length > 0 && (
-        <Card title="Consejos para ahorrar" info="Recomendaciones automáticas a partir de tus datos del último año. Son orientativas.">
+        <Card title="Consejos" info="Recomendaciones automáticas a partir de tus datos del último año. Son orientativas.">
           {tips.map((t, i) => (
-            <Notice key={i} tone={t.tone}>
-              <T style={{ fontWeight: '700' }}>{t.title}</T>
-              <T variant="small" style={{ color: c.text }}>
-                {t.text}
-              </T>
-            </Notice>
+            <TipRow key={i} tip={t} />
           ))}
         </Card>
       )}
 
       <OfflineDataCard supply={supply} />
-
-      <UpdatedAt ts={q.updatedAt} loading={q.loading} />
     </Screen>
   );
 }
+
+function TipRow({ tip }: { tip: Tip }) {
+  const c = useTheme();
+  const [open, setOpen] = useState(false);
+  const icon = tip.tone === 'warning' ? 'alert-circle-outline' : tip.tone === 'good' ? 'checkmark-circle-outline' : 'bulb-outline';
+  const color = tip.tone === 'warning' ? c.warning : tip.tone === 'good' ? c.p3 : c.tint;
+  return (
+    <Pressable onPress={() => setOpen((v) => !v)} style={[styles.tip, { borderColor: c.border }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Ionicons name={icon} size={22} color={color} />
+        <T style={{ flex: 1, fontWeight: '600' }}>{tip.title}</T>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={c.textSecondary} />
+      </View>
+      {open ? (
+        <T variant="small" style={{ color: c.text, marginTop: 6, marginLeft: 32 }}>
+          {tip.text}
+        </T>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  split: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: Spacing.two },
+  tip: { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+});
 
 type Tip = { title: string; text: string; tone: 'info' | 'warning' | 'good' };
 
@@ -220,18 +186,18 @@ function buildTips({
     const move = yearS.byPeriod.P1 * 0.2;
     tips.push({
       tone: 'warning',
-      title: `El ${fmtNum(share('P1'), 0)} % de tu consumo es en hora punta`,
+      title: `${fmtNum(share('P1'), 0)} % de tu consumo en hora punta`,
       text: `Si pasas una quinta parte (${fmtKWh(move, 0)}) a horas valle ahorrarías unos ${fmtEur(move * (prices.P1 - prices.P3))} al año. Programa lavadora, lavavajillas o termo por la noche o el fin de semana.`,
     });
   } else if (share('P3') > 45) {
-    tips.push({ tone: 'good', title: `¡Bien! El ${fmtNum(share('P3'), 0)} % de tu consumo es en valle`, text: 'Aprovechas las horas más baratas.' });
+    tips.push({ tone: 'good', title: `${fmtNum(share('P3'), 0)} % de tu consumo en valle`, text: '¡Bien! Aprovechas las horas más baratas.' });
   }
 
   const baseYear = yearS.baseLoadKW * 24 * 365;
   if (yearS.baseLoadKW > 0.15) {
     tips.push({
       tone: 'info',
-      title: `Tienes ${fmtNum(yearS.baseLoadKW * 1000, 0)} W siempre encendidos`,
+      title: `${fmtNum(yearS.baseLoadKW * 1000, 0)} W siempre encendidos`,
       text: `Son unos ${fmtKWh(baseYear, 0)} al año (${fmtEur(baseYear * prices.P3)}), el ${fmtNum((baseYear / ((yearS.total / Math.max(1, yearS.days)) * 365)) * 100, 0)} % de tu consumo. Revisa aparatos en standby, deshumidificadores o equipos antiguos.`,
     });
   }

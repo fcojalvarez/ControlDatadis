@@ -79,6 +79,7 @@ export function BarChart({
   return (
     <View onLayout={onLayout}>
       {/* Panel de detalle de la barra seleccionada */}
+      {selDatum ? (
       <View style={{ minHeight: 48, justifyContent: 'center', backgroundColor: c.backgroundElement, borderRadius: 10, padding: 10, marginBottom: 6 }}>
         {selDatum ? (
           <View style={{ gap: 2 }}>
@@ -100,10 +101,9 @@ export function BarChart({
             )}
             {selDatum.note ? <T variant="small">{selDatum.note}</T> : null}
           </View>
-        ) : (
-          <T variant="small">Toca una barra para ver su valor exacto</T>
-        )}
+        ) : null}
       </View>
+      ) : null}
 
       {width > 0 && (
         <View style={{ flexDirection: 'row' }}>

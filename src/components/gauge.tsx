@@ -18,7 +18,8 @@ function arc(cx: number, cy: number, r: number, from: number, to: number) {
 }
 
 /** Medidor semicircular de 0 a 100 % con zonas de color */
-export function Gauge({ value, label, sublabel, size = 240 }: { value: number; label: string; sublabel?: string; size?: number }) {
+/** `label` vacío = solo el medidor (sin número debajo) */
+export function Gauge({ value, label, sublabel, size = 240 }: { value: number; label?: string; sublabel?: string; size?: number }) {
   const c = useTheme();
   const v = Math.max(0, Math.min(1, value));
   const stroke = size * 0.09;
@@ -46,8 +47,12 @@ export function Gauge({ value, label, sublabel, size = 240 }: { value: number; l
         <Line x1={cx} y1={cy} x2={needle.x} y2={needle.y} stroke={c.text} strokeWidth={4} strokeLinecap="round" />
         <Circle cx={cx} cy={cy} r={8} fill={c.text} />
       </Svg>
-      <T style={{ fontSize: 44, lineHeight: 52, fontWeight: '800', color, marginTop: 8, fontVariant: ['tabular-nums'] }}>{fmtPct(v)}</T>
-      <T style={{ fontSize: 18, lineHeight: 24, fontWeight: '700', color }}>{label}</T>
+      {label ? (
+        <>
+          <T style={{ fontSize: 44, lineHeight: 52, fontWeight: '800', color, marginTop: 8, fontVariant: ['tabular-nums'] }}>{fmtPct(v)}</T>
+          <T style={{ fontSize: 18, lineHeight: 24, fontWeight: '700', color }}>{label}</T>
+        </>
+      ) : null}
       {sublabel ? (
         <T variant="small" style={{ textAlign: 'center', marginTop: 2 }}>
           {sublabel}

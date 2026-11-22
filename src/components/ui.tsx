@@ -86,6 +86,7 @@ export function Card({
   right,
   children,
   style,
+  onPress,
 }: {
   title?: string;
   subtitle?: string;
@@ -93,9 +94,30 @@ export function Card({
   right?: ReactNode;
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Si se indica, toda la tarjeta es tocable y muestra una flecha › */
+  onPress?: () => void;
 }) {
   const c = useTheme();
   const [showInfo, setShowInfo] = useState(false);
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+        <Card
+          title={title}
+          subtitle={subtitle}
+          info={info}
+          style={style}
+          right={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {right}
+              <Ionicons name="chevron-forward" size={20} color={c.textSecondary} />
+            </View>
+          }>
+          {children}
+        </Card>
+      </Pressable>
+    );
+  }
   return (
     <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }, style]}>
       {(title || right || info) && (
