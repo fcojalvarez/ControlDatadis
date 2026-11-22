@@ -1,10 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
 import { Gauge } from '@/components/gauge';
-import { Card, DataTable, Disclosure, InlineLoading, KeyValue, Notice, Row, Stat, T } from '@/components/ui';
+import { Card, DataTable, Disclosure, InlineLoading, KeyValue, Segmented, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
@@ -125,13 +125,28 @@ export function TripRiskSummaryCard({ supply, onOpen }: { supply: SupplyRef; onO
 
 const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  minis: { flexDirection: 'row', gap: Spacing.two },
+  mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 1 },
+  marginRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
 });
+
+/** Análisis completo para la pestaña Potencia */
+const HOW_IT_WORKS = (risk: TripRisk) =>
+  `${DISCLAIMER}\n\n` +
+  `Cómo se calcula:\n` +
+  `1. De tu curva de consumo se toma la hora de más consumo de cada día.\n` +
+  `2. Comparándola con el pico de 15 min que mide tu contador sale tu factor de pico: ×${fmtNum(risk.factor, 2)}` +
+  (risk.factorSamples ? ` (con ${risk.factorSamples} picos medidos).\n` : ' (valor por defecto).\n') +
+  `3. Pico estimado de cada día = media horaria × factor (sin superar el pico medido ese mes).\n` +
+  `4. Probabilidad de corte en un día: 5 % si iguala tu potencia, 27 % a +10 %, 50 % a +15 %, 88 % a +25 %.\n` +
+  `5. Con la de cada día se calcula la de al menos un corte en 30 días.`;
 
 /** Análisis completo para la pestaña Potencia */
 export function TripRiskSection({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
   const { current: tariff } = useSupplyTariffs(supply.cups);
   const { risk, loading, noContract } = useTripRisk(supply);
+  const [riskView, setRiskView] = useState<'mes' | 'hora'>('mes');
 
   const options = useMemo(() => {
     if (!risk) return [];
@@ -147,11 +162,11 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
 
   if (!risk) {
     return (
-      <Card title="Riesgo de que salten los plomos" info={DISCLAIMER}>
+      <Card title="¿Saltarán los plomos?" info={DISCLAIMER}>
         {loading ? (
-          <InlineLoading text="Calculando el riesgo con tu consumo del último año…" />
+          <InlineLoading text="Calculando…" />
         ) : (
-          <T variant="small">{noContract ? 'No se puede calcular sin la potencia contratada.' : 'No hay datos de consumo suficientes.'}</T>
+          <T variant="small">{noContract ? 'Falta la potencia contratada para calcularlo.' : 'Aún no hay datos suficientes.'}</T>
         )}
       </Card>
     );
@@ -162,137 +177,145 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
   const target = options.find((o) => o.pWorst < 0.05) ?? options[options.length - 1];
   const recommended = current && target && target.kw > current.kw && current.pWorst < 0.2 ? current : target;
   const topDays = [...risk.days].sort((a, b) => b.uNow - a.uNow).slice(0, 8);
-  const lowData = risk.days.length < 30;
+  const events = [...risk.possibleTripDays].sort((a, b) => b.p - a.p);
+  const p = risk.pNext30;
 
   return (
     <>
-      <Card title="Riesgo de que salten los plomos" subtitle="Probabilidad de que salte el limitador al menos una vez en los próximos 30 días" info={DISCLAIMER}>
-        <Gauge value={risk.pNext30} label={`Riesgo ${riskLevel(risk.pNext30).label.toLowerCase()}`} sublabel="Según tus últimos 30 días y el mismo periodo del año pasado" />
-        <T style={{ textAlign: 'center' }}>{headline(risk)}</T>
-        {lowData ? <Notice tone="warning">{`Solo hay ${risk.days.length} días de datos: la estimación es poco fiable.`}</Notice> : null}
-        <Row style={{ marginTop: Spacing.two }}>
-          <Stat label="Mes típico" value={fmtPct(risk.pTypicalMonth)} color={levelColor(c, risk.pTypicalMonth)} sub="media del último año" />
-          <Stat
-            label="Peor mes"
-            value={risk.worstMonth ? fmtPct(risk.worstMonth.p) : '—'}
-            color={risk.worstMonth ? levelColor(c, risk.worstMonth.p) : undefined}
-            sub={risk.worstMonth ? cap(fmtMonthLong(risk.worstMonth.month)) : undefined}
+      {/* ---------- Riesgo ---------- */}
+      <Card title="¿Saltarán los plomos?" info={`${headline(risk)}\n\n${HOW_IT_WORKS(risk)}`}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.three }}>
+          <Gauge value={p} size={130} />
+          <View style={{ flex: 1 }}>
+            <T style={{ fontSize: 34, lineHeight: 40, fontWeight: '800', color: levelColor(c, p) }}>{fmtPct(p)}</T>
+            <T style={{ fontWeight: '700', color: levelColor(c, p) }}>Riesgo {riskLevel(p).label.toLowerCase()}</T>
+            <T variant="small">próximos 30 días</T>
+          </View>
+        </View>
+        {risk.days.length < 30 ? <T variant="small" style={{ color: c.warning }}>{`Solo ${risk.days.length} días de datos: poco fiable.`}</T> : null}
+        <View style={styles.minis}>
+          <Mini label="Mes típico" value={fmtPct(risk.pTypicalMonth)} color={levelColor(c, risk.pTypicalMonth)} />
+          <Mini label="Peor mes" value={risk.worstMonth ? fmtPct(risk.worstMonth.p) : '—'} color={risk.worstMonth ? levelColor(c, risk.worstMonth.p) : undefined} sub={risk.worstMonth ? fmtMonthShort(risk.worstMonth.month) : undefined} />
+          <Mini label="Último año" value={fmtTrips(risk.expectedTrips, true)} color={tripsColor(c, risk.expectedTrips)} sub="veces" />
+        </View>
+        <Segmented<'mes' | 'hora'>
+          value={riskView}
+          onChange={setRiskView}
+          options={[
+            { value: 'mes', label: 'Por mes' },
+            { value: 'hora', label: 'Por hora' },
+          ]}
+        />
+        {riskView === 'mes' ? (
+          <BarChart
+            data={risk.byMonth.map((m) => ({
+              label: fmtMonthShort(m.month).split(' ')[0],
+              detail: cap(fmtMonthLong(m.month)),
+              segments: [{ value: m.p * 100, color: levelColor(c, m.p) }],
+              note: `≈ ${fmtNum(m.expected, 1)} cortes estimados · pico ${fmtNum(m.maxU * 100, 0)} % de tu potencia`,
+            }))}
+            formatValue={(v) => fmtPct(v / 100)}
+            height={150}
           />
-          <Stat label="Días al límite" value={String(risk.riskyDays)} sub="pico estimado por encima de tu potencia" color={risk.riskyDays ? c.warning : undefined} />
-          <Stat
-            label="Picos por encima"
-            value={String(risk.exceedances.length)}
-            sub="medidos por tu contador"
-            color={risk.exceedances.length ? c.danger : undefined}
+        ) : (
+          <BarChart
+            data={risk.byHour.map((v, h) => ({
+              label: String(h),
+              detail: `De ${pad2(h)}:00 a ${pad2(h + 1)}:00`,
+              segments: [{ value: v * 100, color: levelColor(c, v * 30) }],
+            }))}
+            formatValue={(v) => `${fmtNum(v, v < 1 ? 2 : 1)} %`}
+            labelEvery={3}
+            height={150}
           />
-        </Row>
+        )}
+        {events.length ? (
+          <Disclosure title={`Días en que pudo saltar (${events.length})`}>
+            {events.map((d) => (
+              <KeyValue
+                key={d.day}
+                k={`${fmtDate(d.day)} · ${pad2(d.hour)}:00`}
+                hint={`${fmtKW(d.estPeakKW, 2)} con ${fmtKW(d.limitKW, 2)} (${fmtNum(d.u * 100, 0)} %)`}
+                v={<T style={{ fontWeight: '700', color: levelColor(c, d.p) }}>{fmtPct(d.p)}</T>}
+              />
+            ))}
+          </Disclosure>
+        ) : null}
+        <Disclosure title="Días más cerca del límite">
+          {topDays.map((d) => (
+            <DayRow key={d.day} d={d} />
+          ))}
+        </Disclosure>
+        {risk.powerChanged ? <T variant="small">Cambiaste de potencia en este año: cada día se calcula con la que tenías.</T> : null}
       </Card>
 
-      <TripsHistoryCard risk={risk} />
-
+      {/* ---------- Margen ---------- */}
       <MarginCard risk={risk} />
 
-      <Card title="¿Y si cambio la potencia?" info="Riesgo estimado de corte y coste anual del término de potencia (con los precios de tu tarifa, sin impuestos) para cada potencia. Se marca la menor potencia con la que el riesgo en tu peor mes queda por debajo del 5 %.">
+      {/* ---------- ¿Y si cambio la potencia? ---------- */}
+      <Card
+        title="¿Y si cambio la potencia?"
+        info="Para cada potencia: cuántas veces habría saltado en el último año con tu consumo, la probabilidad de que salte en tu peor mes y el coste anual del término de potencia (sin impuestos). Se recomienda la menor potencia con menos de un 5 % de riesgo en tu peor mes.">
         {current && recommended && recommended.kw !== current.kw ? (
-          <Notice tone={recommended.kw > current.kw ? 'warning' : 'good'}>
-            <T style={{ fontWeight: '700' }}>
-              {recommended.kw > current.kw ? `Te convendría subir a ${fmtNum(recommended.kw, 2)} kW` : `Podrías bajar a ${fmtNum(recommended.kw, 2)} kW`}
+          <View style={[styles.pill, { backgroundColor: c.backgroundElement }]}>
+            <Ionicons name={recommended.kw > current.kw ? 'arrow-up-circle' : 'arrow-down-circle'} size={22} color={recommended.kw > current.kw ? c.warning : c.p3} />
+            <T style={{ flex: 1, fontWeight: '600' }}>
+              {recommended.kw > current.kw ? 'Sube' : 'Baja'} a {fmtNum(recommended.kw, 2)} kW
             </T>
-            <T variant="small" style={{ color: c.text }}>
-              {recommended.kw > current.kw
-                ? `El riesgo en tu peor mes bajaría del ${fmtPct(current.pWorst)} al ${fmtPct(recommended.pWorst)}, por unos ${fmtEur(recommended.annual - current.annual)} más al año.`
-                : `Mantendrías un riesgo muy bajo (${fmtPct(recommended.pWorst)} en tu peor mes) y ahorrarías unos ${fmtEur(current.annual - recommended.annual)} al año.`}
+            <T variant="small" style={{ fontWeight: '700', color: c.text }}>
+              {recommended.kw > current.kw ? `+${fmtEur(recommended.annual - current.annual)}/año` : `−${fmtEur(current.annual - recommended.annual)}/año`}
             </T>
-          </Notice>
+          </View>
         ) : (
-          <Notice tone="good">Tu potencia contratada es la adecuada para tu consumo.</Notice>
+          <View style={[styles.pill, { backgroundColor: c.backgroundElement }]}>
+            <Ionicons name="checkmark-circle" size={22} color={c.p3} />
+            <T style={{ flex: 1, fontWeight: '600' }}>Tu potencia es la adecuada</T>
+          </View>
         )}
         <DataTable
           columns={[
-            { title: 'Potencia', render: (o: (typeof options)[number]) => `${fmtNum(o.kw, 2)} kW${o.current ? ' ●' : ''}`, width: 88 },
-            { title: 'Veces en 1 año', render: (o) => fmtTrips(o.expectedTrips, true), color: (o) => tripsColor(c, o.expectedTrips), width: 74 },
-            { title: 'Peor mes', render: (o) => fmtPct(o.pWorst), color: (o) => levelColor(c, o.pWorst), width: 66 },
+            { title: 'kW', render: (o: (typeof options)[number]) => `${fmtNum(o.kw, 2)}${o.current ? ' ●' : ''}`, width: 70 },
+            { title: 'Cortes/año', render: (o) => fmtTrips(o.expectedTrips, true), color: (o) => tripsColor(c, o.expectedTrips), width: 76 },
+            { title: 'Peor mes', render: (o) => fmtPct(o.pWorst), color: (o) => levelColor(c, o.pWorst), width: 68 },
             { title: '€/año', render: (o) => fmtNum(o.annual, 0), width: 56 },
           ]}
           rows={options}
         />
-        <T variant="small">
-          ● tu potencia actual{recommended ? ` · Recomendada: ${fmtNum(recommended.kw, 2)} kW` : ''}. «Veces en 1 año»: cortes que habría tenido con esa potencia y tu consumo del último año. «Peor mes»: probabilidad de que salte en tu mes de más consumo.
-        </T>
-      </Card>
-
-      <Card title="Riesgo por mes" subtitle="Probabilidad de que salte en cada mes del último año">
-        <BarChart
-          data={risk.byMonth.map((m) => ({
-            label: fmtMonthShort(m.month).split(' ')[0],
-            detail: cap(fmtMonthLong(m.month)),
-            segments: [{ value: m.p * 100, color: levelColor(c, m.p) }],
-            note: `Pico estimado máximo: ${fmtNum(m.maxU * 100, 0)} % de tu potencia · ${m.days} días con datos`,
-          }))}
-          formatValue={(v) => fmtPct(v / 100)}
-          height={170}
-        />
-      </Card>
-
-      <Card title="Horas de más riesgo" subtitle="En qué hora del día suele producirse el pico peligroso">
-        <BarChart
-          data={risk.byHour.map((v, h) => ({
-            label: String(h),
-            detail: `De ${pad2(h)}:00 a ${pad2(h + 1)}:00`,
-            segments: [{ value: v * 100, color: levelColor(c, v * 30) }],
-          }))}
-          formatValue={(v) => `${fmtNum(v, v < 1 ? 2 : 1)} %`}
-          labelEvery={3}
-          height={150}
-        />
-        <T variant="small">Probabilidad diaria de corte en cada hora. Evita juntar aparatos potentes en las horas más altas.</T>
-      </Card>
-
-      <Card title="Días más cerca del límite">
-        {topDays.map((d) => (
-          <DayRow key={d.day} d={d} />
-        ))}
-        <Disclosure title="¿Cómo se calcula?">
-          <View style={{ gap: 6 }}>
-            <T variant="small" style={{ color: c.text }}>
-              1. De tu curva de consumo se toma la hora de más consumo de cada día (potencia media de esa hora).
-            </T>
-            <T variant="small" style={{ color: c.text }}>
-              2. Tu contador mide además el pico de 15 minutos de cada mes. Comparándolo con la media horaria de ese día sale tu factor de pico:{' '}
-              <T variant="small" style={{ fontWeight: '700', color: c.text }}>
-                ×{fmtNum(risk.factor, 2)}
-              </T>
-              {risk.factorSamples ? ` (calculado con ${risk.factorSamples} picos medidos).` : ' (valor por defecto: no hay picos medidos con los que calibrar).'}
-            </T>
-            <T variant="small" style={{ color: c.text }}>
-              3. Pico estimado de cada día = media horaria × factor (o el pico medido por el contador ese día, si lo hay). Se compara con tu potencia: P1 ({fmtKW(risk.contracted[0], 2)}) en punta y llano
-              {risk.contracted[1] ? ` y P2 (${fmtKW(risk.contracted[1], 2)}) en valle` : ''}.
-            </T>
-            <T variant="small" style={{ color: c.text }}>
-              4. El limitador sigue la curva de la norma UNE 20317: no corta con excesos de hasta un 10 %, y corta antes cuanto mayor es el exceso (en minutos con +20-50 %, en segundos con el doble). Por eso, la probabilidad de corte en un día es de un 5 % si el pico de 15 minutos iguala tu potencia, de un 27 % si la supera un 10 %, del 50 % si la supera un 15 % y de un 88 % si la supera un 25 %. Ningún día puede superar el pico real que midió el contador ese mes.
-            </T>
-            <T variant="small" style={{ color: c.text }}>
-              5. Con la probabilidad de cada día se calcula la de que salte al menos una vez en 30 días.
-            </T>
-          </View>
-        </Disclosure>
       </Card>
     </>
+  );
+}
+
+function Mini({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
+  const c = useTheme();
+  return (
+    <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
+      <T variant="small" numberOfLines={1}>
+        {label}
+      </T>
+      <T style={{ fontWeight: '800', fontSize: 17, color: color ?? c.text }} numberOfLines={1}>
+        {value}
+      </T>
+      {sub ? (
+        <T variant="small" numberOfLines={1}>
+          {sub}
+        </T>
+      ) : null}
+    </View>
   );
 }
 
 function DayRow({ d }: { d: DayRisk }) {
   const c = useTheme();
   const pct = d.uNow * 100;
-  const limitNow = d.uNow > 0 ? d.estPeakKW / d.uNow : d.limitKW;
   return (
     <KeyValue
       k={`${fmtDate(d.day)} · ${pad2(d.hour)}:00`}
-      hint={`${d.measured ? 'Pico medido por el contador' : d.capped ? 'Estimado, igual al pico medido ese mes' : `Pico estimado (media horaria ${fmtKW(d.avgPeakKW, 2)})`} · tu potencia actual ${fmtKW(limitNow, 2)}`}
+      hint={d.measured ? 'medido por el contador' : 'estimado'}
       v={
         <View style={{ alignItems: 'flex-end' }}>
           <T style={{ fontWeight: '700', color: pct >= 100 ? c.danger : pct >= 90 ? c.warning : c.text }}>{fmtKW(d.estPeakKW, 2)}</T>
-          <T variant="small">{fmtNum(pct, 0)} % de tu potencia actual</T>
+          <T variant="small">{fmtNum(pct, 0)} %</T>
         </View>
       }
     />
@@ -303,43 +326,40 @@ function DayRow({ d }: { d: DayRisk }) {
 function MarginCard({ risk }: { risk: TripRisk }) {
   const c = useTheme();
   const p1 = risk.contracted[0];
-  const p2 = risk.contracted[1];
   const maxM = risk.maxMeasured;
   const colors = [c.p3, c.p2, '#EF7D2F', c.danger];
+  const short = ['no salta', '10-15 min', '30 s - 3 min', 'segundos'];
   return (
     <Card
-      title="¿Cuánto margen tienes?"
-      subtitle={`Con ${fmtKW(p1, 2)} contratados${p2 && p2 !== p1 ? ` (${fmtKW(p2, 2)} en valle)` : ''}`}
-      info="El limitador del contador no corta nada más pasar de tu potencia: sigue una curva (norma UNE 20317) que tolera excesos pequeños y corta antes cuanto mayor es el exceso. Los tiempos son orientativos: según el contador y las pruebas publicadas varían bastante.">
+      title="Tu margen"
+      right={<T variant="small">con {fmtKW(p1, 2)}</T>}
+      info={
+        'El limitador no corta nada más pasar de tu potencia: sigue la curva de la norma UNE 20317, que tolera excesos pequeños y corta antes cuanto mayor es el exceso. Los tiempos son orientativos.\n\n' +
+        'Los aparatos que más picos provocan: horno, vitro o inducción, termo, lavadora y lavavajillas al calentar agua, secadora, aire acondicionado y la carga del coche eléctrico.'
+      }>
       {TRIP_CURVE.map((t, i) => (
-        <View key={t.factor} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 6 }}>
-          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors[i] }} />
-          <View style={{ flex: 1 }}>
-            <T style={{ fontWeight: '700' }}>
-              {i === 0 ? 'Hasta ' : ''}
-              {fmtKW(p1 * t.factor, 2)} <T variant="small">({t.label})</T>
-            </T>
-            <T variant="small" style={{ color: c.text }}>
-              {t.time}
-            </T>
-          </View>
+        <View key={t.factor} style={styles.marginRow}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors[i] }} />
+          <T style={{ fontWeight: '700', width: 92 }}>
+            {i === 0 ? '≤ ' : ''}
+            {fmtKW(p1 * t.factor, 2)}
+          </T>
+          <T variant="small" style={{ flex: 1 }}>
+            {t.label}
+          </T>
+          <T variant="small" style={{ color: c.text, fontWeight: '600' }}>
+            {short[i]}
+          </T>
         </View>
       ))}
       {maxM ? (
-        <Notice tone={maxM.kw > p1 * 1.1 ? 'warning' : 'info'}>
-          <T variant="small" style={{ color: c.text }}>
-            Tu mayor pico de 15 minutos medido fue de {fmtKW(maxM.kw, 2)} ({fmtNum((maxM.kw / p1) * 100, 0)} % de tu potencia) el {fmtDate(maxM.date)} a las {maxM.time}.
-            {maxM.kw > p1 * 1.1
-              ? ' Es una media de 15 minutos por encima del margen de tolerancia: es muy probable que saltara o estuviera a punto.'
-              : maxM.kw > p1
-                ? ' Superó tu potencia, pero dentro del margen de tolerancia.'
-                : ' Dentro de tu potencia contratada.'}
+        <View style={[styles.pill, { backgroundColor: c.backgroundElement }]}>
+          <Ionicons name="pulse" size={20} color={maxM.kw > p1 * 1.1 ? c.danger : maxM.kw > p1 ? c.warning : c.p3} />
+          <T variant="small" style={{ flex: 1, color: c.text }}>
+            Tu mayor pico: <T variant="small" style={{ fontWeight: '800', color: c.text }}>{fmtKW(maxM.kw, 2)}</T> ({fmtNum((maxM.kw / p1) * 100, 0)} %) · {fmtDate(maxM.date)} {maxM.time}
           </T>
-        </Notice>
+        </View>
       ) : null}
-      <T variant="small">
-        Consejo: los aparatos que más disparan picos son horno, vitrocerámica o inducción, termo eléctrico, lavadora y lavavajillas al calentar agua, secadora, aire acondicionado y la carga del coche eléctrico.
-      </T>
     </Card>
   );
 }
@@ -354,58 +374,4 @@ function fmtTrips(n: number, short = false): string {
 
 function tripsColor(c: ReturnType<typeof useTheme>, n: number) {
   return n < 0.5 ? c.p3 : n < 2 ? '#7CB342' : n < 6 ? c.p2 : n < 12 ? '#EF7D2F' : c.danger;
-}
-
-/** Cuántas veces ha podido saltar el limitador en el periodo analizado */
-function TripsHistoryCard({ risk }: { risk: TripRisk }) {
-  const c = useTheme();
-  const events = [...risk.possibleTripDays].sort((a, b) => b.p - a.p);
-  const byMonthMax = Math.max(0, ...risk.byMonth.map((m) => m.expected));
-  return (
-    <Card
-      title="¿Cuántas veces han podido saltar?"
-      subtitle={risk.firstDay ? `Del ${fmtDate(risk.firstDay)} al ${fmtDate(risk.lastDay)} (${risk.days.length} días)` : undefined}
-      info="Suma de la probabilidad de corte de cada día: por ejemplo, 10 días con un 30 % de probabilidad equivalen a unas 3 veces. Se usa la potencia que tenías contratada cada día. Es una estimación: no incluye cortes por picos de pocos segundos que no se ven en los datos de Datadis.">
-      <View style={{ alignItems: 'center', paddingVertical: Spacing.two }}>
-        <T style={{ fontSize: 40, lineHeight: 48, fontWeight: '800', color: tripsColor(c, risk.expectedTrips) }}>{fmtTrips(risk.expectedTrips)}</T>
-        <T variant="small" style={{ textAlign: 'center' }}>
-          {risk.expectedTrips < 0.5
-            ? 'Con tu consumo, el limitador casi seguro no ha saltado por exceso de potencia.'
-            : 'que habrá saltado el limitador por exceso de potencia, según tu consumo.'}
-        </T>
-      </View>
-      <Row>
-        <Stat label="Casi seguro" value={String(risk.likelyTripDays.length)} sub="días con probabilidad ≥ 50 %" color={risk.likelyTripDays.length ? c.danger : undefined} />
-        <Stat label="Posibles" value={String(risk.possibleTripDays.length)} sub="días con probabilidad ≥ 20 %" color={risk.possibleTripDays.length ? c.warning : undefined} />
-      </Row>
-      {risk.powerChanged ? (
-        <Notice>Has cambiado de potencia en este periodo: en cada día se ha usado la potencia que tenías contratada entonces.</Notice>
-      ) : null}
-      {byMonthMax >= 0.05 ? (
-        <BarChart
-          data={risk.byMonth.map((m) => ({
-            label: fmtMonthShort(m.month).split(' ')[0],
-            detail: cap(fmtMonthLong(m.month)),
-            segments: [{ value: m.expected, color: tripsColor(c, byMonthMax * 12) }],
-            note: `Probabilidad de al menos un corte ese mes: ${fmtPct(m.p)}`,
-          }))}
-          formatValue={(v) => `${fmtNum(v, v < 10 ? 1 : 0)} veces`}
-          height={150}
-          legend={[{ color: tripsColor(c, byMonthMax * 12), label: 'Veces estimadas que saltó cada mes' }]}
-        />
-      ) : null}
-      {events.length ? (
-        <Disclosure title={`Ver los ${events.length} días en los que pudo saltar`}>
-          {events.map((d) => (
-            <KeyValue
-              key={d.day}
-              k={`${fmtDate(d.day)} · hacia las ${pad2(d.hour)}:00`}
-              hint={`Pico ${d.measured ? 'medido' : 'estimado'} ${fmtKW(d.estPeakKW, 2)} con ${fmtKW(d.limitKW, 2)} contratados (${fmtNum(d.u * 100, 0)} %)`}
-              v={<T style={{ fontWeight: '700', color: levelColor(c, d.p) }}>{fmtPct(d.p)}</T>}
-            />
-          ))}
-        </Disclosure>
-      ) : null}
-    </Card>
-  );
 }

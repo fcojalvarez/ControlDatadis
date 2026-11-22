@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState, type ReactNode } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
+import { Card, Screen, T } from '@/components/ui';
 import { UpdateCard } from '@/components/update';
-import { Button, Card, KeyValue, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
@@ -30,13 +31,15 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <Card title="Cuenta">
-        <KeyValue k="Usuario Datadis" v={username ?? '—'} />
-        <Button
-          title="Cerrar sesión"
-          variant="danger"
+      {/* ---------- Cuenta ---------- */}
+      <Card>
+        <Item icon="person-circle-outline" label={username ?? '—'} sub="Usuario de Datadis" />
+        <Item
+          icon="log-out-outline"
+          label="Cerrar sesión"
+          danger
           onPress={() =>
-            Alert.alert('Cerrar sesión', 'Se borrará tu contraseña de este dispositivo. Los datos descargados se conservan; puedes borrarlos abajo en «Datos guardados».', [
+            Alert.alert('Cerrar sesión', 'Se borrará tu contraseña de este móvil. Los datos descargados se conservan.', [
               { text: 'Cancelar', style: 'cancel' },
               { text: 'Cerrar sesión', style: 'destructive', onPress: signOut },
             ])
@@ -44,63 +47,57 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card title="NIF autorizados">
-        <T variant="small">
-          Si otra persona te ha autorizado en Datadis a consultar sus suministros, añade aquí su NIF para cambiar entre
-          cuentas desde la pantalla principal.
-        </T>
+      {/* ---------- Instalación ---------- */}
+      <Card>
+        <Item
+          icon="sunny-outline"
+          label="Tengo placas solares"
+          right={<Switch value={settings.hasSolar} onValueChange={(v) => updateSettings({ hasSolar: v })} trackColor={{ true: c.tint }} />}
+        />
+      </Card>
+
+      {/* ---------- NIF autorizados ---------- */}
+      <Card title="NIF autorizados" info="Si otra persona te ha autorizado en Datadis a ver sus suministros, añade su NIF para cambiar entre cuentas desde la pantalla de inicio.">
         {settings.authorizedNifs.map((n) => (
-          <KeyValue
+          <Item
             key={n}
-            k={n}
-            v={
-              <Pressable onPress={() => removeNif(n)} hitSlop={8}>
-                <T style={{ color: c.danger }}>Quitar</T>
+            icon="id-card-outline"
+            label={n}
+            right={
+              <Pressable onPress={() => removeNif(n)} hitSlop={8} accessibilityLabel={`Quitar ${n}`}>
+                <Ionicons name="close-circle-outline" size={22} color={c.danger} />
               </Pressable>
             }
           />
         ))}
-        <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+        <View style={[styles.addRow, { borderColor: c.border, backgroundColor: c.backgroundElement }]}>
           <TextInput
             value={newNif}
             onChangeText={setNewNif}
-            placeholder="NIF autorizado"
+            placeholder="Añadir NIF"
             placeholderTextColor={c.textSecondary}
             autoCapitalize="characters"
             autoCorrect={false}
-            style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.backgroundElement }]}
+            style={[styles.input, { color: c.text }]}
             onSubmitEditing={addNif}
           />
-          <Button title="Añadir" onPress={addNif} />
+          <Pressable onPress={addNif} hitSlop={8} accessibilityLabel="Añadir NIF">
+            <Ionicons name="add-circle" size={26} color={c.tint} />
+          </Pressable>
         </View>
       </Card>
 
-      <Card title="Mi instalación">
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
-          <T style={{ flex: 1 }}>Tengo placas solares</T>
-          <Switch value={settings.hasSolar} onValueChange={(v) => updateSettings({ hasSolar: v })} trackColor={{ true: c.tint }} />
-        </View>
-      </Card>
-
-      <Card title="Precios y tarifas">
-        <T variant="small">
-          Los precios de tu comercializadora se configuran en cada suministro: abre el suministro → pestaña Facturas →
-          «Editar tarifa». Allí puedes poner tus precios, el día en que empiezan tus facturas y ofertas para comparar.
-        </T>
-      </Card>
-
-      <Card title="Datos guardados">
-        <T variant="small">
-          Todo lo que se descarga de Datadis se guarda en el móvil y no se borra nunca automáticamente: si Datadis falla o va
-          lento, la app sigue mostrando los datos guardados. Los meses cerrados se vuelven a consultar como mucho una vez al
-          mes y el mes en curso cada 6 horas. Desliza hacia abajo en cualquier pantalla para forzar una actualización.
-        </T>
-        <KeyValue k="Datos guardados" v={stats.files ? `${stats.files} archivos · ${fmtNum(stats.bytes / 1024 / 1024, 1)} MB` : 'Ninguno todavía'} />
-        <Button
-          title="Borrar datos guardados"
-          variant="danger"
+      {/* ---------- Datos guardados ---------- */}
+      <Card
+        title="Datos guardados"
+        info="Todo lo que se descarga de Datadis se guarda en el móvil y no se borra solo: si Datadis falla o va lento, la app sigue mostrando lo guardado. Los meses cerrados se vuelven a consultar como mucho una vez al mes y el mes en curso cada 6 horas.">
+        <Item icon="folder-outline" label={stats.files ? `${fmtNum(stats.bytes / 1024 / 1024, 1)} MB` : 'Ninguno todavía'} sub={stats.files ? `${stats.files} archivos` : undefined} />
+        <Item
+          icon="trash-outline"
+          label="Borrar datos guardados"
+          danger
           onPress={() =>
-            Alert.alert('Borrar datos guardados', 'Se borrará todo lo descargado de Datadis. Tendrás que volver a descargarlo, y si Datadis no responde no verás datos.', [
+            Alert.alert('Borrar datos guardados', 'Se borrará todo lo descargado de Datadis y habrá que volver a descargarlo.', [
               { text: 'Cancelar', style: 'cancel' },
               {
                 text: 'Borrar',
@@ -117,27 +114,46 @@ export default function SettingsScreen() {
 
       <UpdateCard />
 
-      <Card title="Acerca de">
-        <T variant="small">
-          App no oficial. Usa la API privada gratuita de Datadis (datadis.es), la plataforma de las distribuidoras
-          eléctricas españolas. Los datos provienen de tu distribuidora y pueden tardar 1-2 días en aparecer.
-        </T>
-        <Pressable onPress={() => Linking.openURL('https://datadis.es')}>
-          <T style={{ color: c.tint }}>datadis.es</T>
-        </Pressable>
-      </Card>
+      <Pressable onPress={() => Linking.openURL('https://datadis.es')} style={styles.about}>
+        <T variant="small">App no oficial · datos de datadis.es</T>
+      </Pressable>
     </Screen>
   );
 }
 
+/** Fila de ajustes: icono, texto y un control o flecha a la derecha */
+function Item({
+  icon,
+  label,
+  sub,
+  right,
+  danger,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub?: string;
+  right?: ReactNode;
+  danger?: boolean;
+  onPress?: () => void;
+}) {
+  const c = useTheme();
+  const color = danger ? c.danger : c.text;
+  return (
+    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.7 : 1 }]}>
+      <Ionicons name={icon} size={22} color={danger ? c.danger : c.tint} />
+      <View style={{ flex: 1 }}>
+        <T style={{ color, fontWeight: '600' }}>{label}</T>
+        {sub ? <T variant="small">{sub}</T> : null}
+      </View>
+      {right}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  numInput: { width: 90, textAlign: 'right', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 15 },
-  textInput: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 15 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, marginTop: 4 },
+  input: { flex: 1, minWidth: 0, paddingVertical: 10, fontSize: 15 },
+  about: { alignItems: 'center', paddingVertical: Spacing.two },
 });

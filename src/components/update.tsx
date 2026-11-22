@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Linking, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { ActivityIndicator, Linking, Pressable, View } from 'react-native';
 
 import { ProgressBar } from '@/components/bar-chart';
-import { Button, Card, KeyValue, Notice, T } from '@/components/ui';
+import { Button, Card, Notice, T } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { fmtDate, fmtNum } from '@/lib/format';
 import {
@@ -114,36 +115,44 @@ export function UpdateCard() {
 
   return (
     <Card
-      title="Actualizaciones"
-      info="Las versiones nuevas se publican en GitHub. La app las busca sola cada 12 horas y te avisa en la pantalla de inicio. Al actualizar se descarga el APK y se abre el instalador de Android: la primera vez te pedirá permitir instalar apps de esta fuente.">
-      <KeyValue k="Versión instalada" v={`${installedVersion()} (build ${installedBuild()})`} />
+      title="Versión"
+      info="La app busca versiones nuevas sola cada 12 horas y te avisa en la pantalla de inicio. Al actualizar se descarga el APK y se abre el instalador de Android (la primera vez pide permitir instalar apps de esta fuente). Se conservan todos los datos."
+      right={
+        <Pressable onPress={check} disabled={phase.kind === 'checking'} hitSlop={10} accessibilityLabel="Buscar actualizaciones">
+          {phase.kind === 'checking' ? <ActivityIndicator color={c.tint} /> : <Ionicons name="refresh" size={22} color={c.tint} />}
+        </Pressable>
+      }>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <T style={{ flex: 1, fontWeight: '600' }}>
+          {installedVersion()} · build {installedBuild()}
+        </T>
+        {checked && !release && phase.kind === 'idle' ? (
+          <T variant="small" style={{ color: c.p3, fontWeight: '700' }}>
+            Es la última
+          </T>
+        ) : null}
+        <Pressable onPress={() => Linking.openURL(RELEASES_PAGE)} hitSlop={8} accessibilityLabel="Ver versiones en GitHub">
+          <Ionicons name="logo-github" size={20} color={c.textSecondary} />
+        </Pressable>
+      </View>
+      {phase.kind === 'error' && !release ? (
+        <T variant="small" style={{ color: c.danger }}>
+          No se pudo comprobar: {phase.message}
+        </T>
+      ) : null}
       {release ? (
         <>
-          <KeyValue k="Nueva versión" v={`${release.version} (build ${release.build})`} hint={`Publicada el ${fmtDate(release.publishedAt.slice(0, 10))}`} />
+          <T variant="small" style={{ color: c.text }}>
+            Nueva: {release.version} · build {release.build} ({fmtDate(release.publishedAt.slice(0, 10))})
+          </T>
           {phase.kind === 'idle' || phase.kind === 'checking' ? (
-            <Button title={canSelfUpdate() ? 'Descargar e instalar' : 'Ver en GitHub'} onPress={() => install(release)} />
+            <Button title={canSelfUpdate() ? 'Instalar' : 'Ver en GitHub'} onPress={() => install(release)} />
           ) : (
             <InstallProgress phase={phase} release={release} />
           )}
         </>
-      ) : (
-        <>
-          {checked && phase.kind === 'idle' ? (
-            <T variant="small" style={{ color: c.p3, fontWeight: '600' }}>
-              Tienes la última versión.
-            </T>
-          ) : null}
-          {phase.kind === 'error' ? (
-            <T variant="small" style={{ color: c.danger }}>
-              No se pudo comprobar: {phase.message}
-            </T>
-          ) : null}
-          <Button title="Buscar actualizaciones" variant="secondary" loading={phase.kind === 'checking'} onPress={check} />
-        </>
-      )}
-      <T variant="small" style={{ color: c.tint }} onPress={() => Linking.openURL(RELEASES_PAGE)}>
-        Ver todas las versiones en GitHub ›
-      </T>
+      ) : null}
     </Card>
   );
 }
+

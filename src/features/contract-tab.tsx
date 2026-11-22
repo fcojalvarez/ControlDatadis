@@ -1,6 +1,10 @@
+import { StyleSheet, View } from 'react-native';
+
 import type { ContractDetail } from '@/api/datadis';
-import { Card, Empty, SavedDataNotice, KeyValue, Loading, Notice, Screen, T, UpdatedAt } from '@/components/ui';
+import { Card, Disclosure, Empty, KeyValue, Loading, Notice, SavedDataNotice, Screen, T } from '@/components/ui';
+import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
+import { useTheme } from '@/hooks/use-theme';
 import { fmtDate, fmtNum } from '@/lib/format';
 
 import { useContract } from './queries';
@@ -9,92 +13,125 @@ import { POINT_TYPES, type SupplyRef } from './types';
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 export function ContractTab({ supply }: { supply: SupplyRef }) {
+  const c = useTheme();
+  const { settings } = useSession();
   const q = useContract(supply);
   const contracts = [...(q.data?.contracts ?? [])].sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1));
-  const [current, ...previous] = contracts;
+  const [ct, ...previous] = contracts;
+  const kw = ct?.contractedPowerkW ?? [];
+  const hasSelf = !!ct && settings.hasSolar && !!(ct.selfConsumptionTypeCode || ct.cau);
+  const installed = ct?.installedCapacityKW ?? ct?.installedCapacity;
 
   return (
     <Screen refreshing={q.loading && !!q.data} onRefresh={q.refresh}>
-      <Card title="Punto de suministro" info="El CUPS es el código único de tu punto de luz. Lo necesitas para cambiar de comercializadora o hacer cualquier gestión.">
-        <KeyValue k="CUPS" v={supply.cups} />
-        <KeyValue k="Dirección" v={str(supply.address)} />
-        <KeyValue k="Distribuidora" hint="Dueña de la red y del contador; no cambia aunque cambies de compañía" v={`${str(supply.distributor)} (código ${supply.distributorCode})`} />
-        <KeyValue k="Tipo de punto de medida" v={POINT_TYPES[supply.pointType] ?? String(supply.pointType)} />
-        <KeyValue k="Datos en Datadis desde" v={fmtDate(supply.validDateFrom)} />
-        {supply.validDateTo ? <KeyValue k="Datos hasta" v={fmtDate(supply.validDateTo)} /> : null}
-      </Card>
-
       {q.loading && !q.data ? <Loading /> : null}
       <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {q.data && contracts.length === 0 ? <Empty text="La distribuidora no ha devuelto datos de contrato." /> : null}
 
-      {current && <ContractCards ct={current} title="Contrato actual" />}
-      {previous.map((ct, i) => (
-        <ContractCards key={i} ct={ct} title={`Contrato anterior (${fmtDate(ct.startDate)} – ${fmtDate(ct.endDate)})`} compact />
-      ))}
+      {/* ---------- Cabecera del contrato ---------- */}
+      {ct ? (
+        <Card>
+          <T variant="label">Comercializadora</T>
+          <T variant="subtitle">{str(ct.marketer)}</T>
+          <T variant="small">Desde {fmtDate(ct.startDate)}{ct.endDate ? ` hasta ${fmtDate(ct.endDate)}` : ''}</T>
+          <View style={styles.chips}>
+            {kw.length ? <Chip text={`${[...new Set(kw)].map((k) => fmtNum(k, 2)).join(' / ')} kW`} strong /> : null}
+            {ct.accessFare ? <Chip text={String(ct.accessFare)} /> : null}
+            {ct.modePowerControl ? <Chip text={String(ct.modePowerControl)} /> : null}
+          </View>
+        </Card>
+      ) : null}
+
+      {/* ---------- Potencia y tarifa ---------- */}
+      {ct ? (
+        <Card
+          title="Potencia y tarifa"
+          info="Potencia contratada: lo máximo que puedes tener encendido a la vez. P1 se aplica de lunes a viernes de 8 a 24 h y P2 en valle.\n\nBIE: potencia máxima admisible de tu instalación (el límite técnico).\n\nControl de potencia: ICP es el limitador que corta; con maxímetro se factura el exceso.">
+          <KeyValue k="Potencia P1 / P2" v={kw.length ? kw.map((k) => fmtNum(k, 3)).join(' / ') + ' kW' : '—'} />
+          <KeyValue k="Máxima admisible (BIE)" v={ct.maxPowerInstall ? `${str(ct.maxPowerInstall)} kW` : '—'} />
+          <KeyValue k="Tarifa de acceso" v={`${str(ct.accessFare)}${ct.codeFare ? ` (${ct.codeFare})` : ''}`} />
+          <KeyValue k="Discriminación" v={str(ct.timeDiscrimination)} />
+          <KeyValue k="Tensión" v={str(ct.tension)} />
+          <KeyValue k="Control de potencia" v={str(ct.modePowerControl)} />
+        </Card>
+      ) : null}
+
+      {/* ---------- Punto de suministro ---------- */}
+      <Card
+        title="Punto de suministro"
+        info="El CUPS es el código único de tu punto de luz: lo necesitas para cambiar de comercializadora o hacer cualquier gestión.\n\nLa distribuidora es la dueña de la red y del contador; no cambia aunque cambies de compañía.">
+        <KeyValue k="CUPS" v={supply.cups} />
+        <KeyValue k="Dirección" v={str(supply.address)} />
+        {ct ? <KeyValue k="Ubicación" v={[ct.postalCode, ct.municipality].filter(Boolean).join(' · ') || '—'} /> : null}
+        <KeyValue k="Distribuidora" v={str(supply.distributor)} />
+        <KeyValue k="Contador" v={POINT_TYPES[supply.pointType] ?? String(supply.pointType)} />
+      </Card>
+
+      {/* ---------- Autoconsumo ---------- */}
+      {hasSelf && ct ? (
+        <Card
+          title="Autoconsumo"
+          info="Datos de tu instalación registrados por la distribuidora. El CAU es el código de la instalación y el coeficiente de reparto, la parte de la generación que te corresponde en autoconsumos compartidos.">
+          <KeyValue k="Modalidad" v={str(ct.selfConsumptionTypeDesc)} />
+          <KeyValue k="Potencia instalada" v={installed !== null && installed !== undefined && installed !== '' ? `${str(installed)} kW` : '—'} />
+          <KeyValue k="CAU" v={str(ct.cau)} />
+          <KeyValue k="Coeficiente de reparto" v={str(ct.partitionCoefficient)} />
+        </Card>
+      ) : null}
+
+      {/* ---------- Historial ---------- */}
+      {ct ? (
+        <Card title="Historial">
+          <KeyValue k="Último cambio de comercializadora" v={fmtDate(ct.lastMarketerDate)} />
+          <KeyValue k="Datos en Datadis desde" v={fmtDate(supply.validDateFrom)} />
+          {ct.dateOwner?.length ? (
+            <KeyValue k="Titular" v={ct.dateOwner.map((o) => `${fmtDate(o.startDate)} → ${o.endDate ? fmtDate(o.endDate) : 'hoy'}`).join('\n')} />
+          ) : null}
+          {previous.length ? (
+            <Disclosure title={`Contratos anteriores (${previous.length})`}>
+              {previous.map((p, i) => (
+                <PreviousContract key={i} ct={p} />
+              ))}
+            </Disclosure>
+          ) : null}
+        </Card>
+      ) : null}
 
       {q.data?.errors.length ? (
         <Notice tone="warning">
           {q.data.errors.map((e, i) => (
-            <T key={i} variant="small">
+            <T key={i} variant="small" style={{ color: c.text }}>
               {e.distributorName ?? e.distributorCode}: {e.errorDescription ?? e.errorCode}
             </T>
           ))}
         </Notice>
       ) : null}
-      <UpdatedAt ts={q.updatedAt} loading={q.loading} />
     </Screen>
   );
 }
 
-function ContractCards({ ct, title, compact }: { ct: ContractDetail; title: string; compact?: boolean }) {
-  const { settings } = useSession();
-  const hasSelf = settings.hasSolar && !!(ct.selfConsumptionTypeCode || ct.cau);
-  const installed = ct.installedCapacityKW ?? ct.installedCapacity;
+function Chip({ text, strong }: { text: string; strong?: boolean }) {
+  const c = useTheme();
   return (
-    <>
-      <Card title={title}>
-        <KeyValue k="Comercializadora" hint="La compañía que te factura" v={str(ct.marketer)} />
-        <KeyValue k="Inicio del contrato" v={fmtDate(ct.startDate)} />
-        <KeyValue k="Fin del contrato" v={ct.endDate ? fmtDate(ct.endDate) : 'Vigente'} />
-        <KeyValue k="Último cambio de comercializadora" v={fmtDate(ct.lastMarketerDate)} />
-        <KeyValue k="Ubicación" v={[ct.postalCode, ct.municipality, ct.province].filter(Boolean).join(' · ') || '—'} />
-      </Card>
-
-      <Card
-        title="Potencia y tarifa"
-        info="La potencia contratada es lo máximo que puedes tener encendido a la vez. P1 se aplica en punta y llano (L-V de 8 a 24 h) y P2 en valle. La potencia máxima admisible (BIE) es el límite técnico de tu instalación.">
-        {ct.contractedPowerkW?.length ? (
-          ct.contractedPowerkW.map((p, j) => (
-            <KeyValue key={j} k={`Potencia contratada P${j + 1}`} hint={j === 0 ? 'Punta y llano' : j === 1 ? 'Valle' : undefined} v={`${fmtNum(p, 3)} kW`} />
-          ))
-        ) : (
-          <KeyValue k="Potencia contratada" v="—" />
-        )}
-        <KeyValue k="Potencia máxima admisible (BIE)" v={ct.maxPowerInstall ? `${str(ct.maxPowerInstall)} kW` : '—'} />
-        <KeyValue k="Tarifa de acceso" v={`${str(ct.accessFare)}${ct.codeFare ? ` (${ct.codeFare})` : ''}`} />
-        <KeyValue k="Discriminación horaria" v={str(ct.timeDiscrimination)} />
-        <KeyValue k="Tensión" v={str(ct.tension)} />
-        <KeyValue k="Control de potencia" hint="ICP: limitador; maxímetro: se factura el exceso" v={str(ct.modePowerControl)} />
-      </Card>
-
-      {!compact && ct.dateOwner?.length ? (
-        <Card title="Titularidad" subtitle="Periodos en los que eres titular del suministro">
-          {ct.dateOwner.map((o, i) => (
-            <KeyValue key={i} k={`Periodo ${i + 1}`} v={`${fmtDate(o.startDate)} → ${o.endDate ? fmtDate(o.endDate) : 'actualidad'}`} />
-          ))}
-        </Card>
-      ) : null}
-
-      {hasSelf && (
-        <Card title="Autoconsumo" info="Datos de tu instalación de autoconsumo registrados por la distribuidora. El CAU es el código de la instalación y el coeficiente de reparto indica qué parte de la generación te corresponde en autoconsumos compartidos.">
-          <KeyValue k="Modalidad" v={str(ct.selfConsumptionTypeDesc)} hint={ct.selfConsumptionTypeCode ? `Código ${ct.selfConsumptionTypeCode}` : undefined} />
-          <KeyValue k="CAU" v={str(ct.cau)} />
-          <KeyValue k="Potencia instalada" v={installed !== null && installed !== undefined && installed !== '' ? `${str(installed)} kW` : '—'} />
-          <KeyValue k="Sección / subsección" v={`${str(ct.section)} / ${str(ct.subsection)}`} />
-          <KeyValue k="Coeficiente de reparto" v={str(ct.partitionCoefficient)} />
-        </Card>
-      )}
-    </>
+    <View style={[styles.chip, { backgroundColor: strong ? c.tint : c.backgroundElement }]}>
+      <T variant="small" style={{ fontWeight: '700', color: strong ? c.tintText : c.text }}>
+        {text}
+      </T>
+    </View>
   );
 }
+
+function PreviousContract({ ct }: { ct: ContractDetail }) {
+  return (
+    <KeyValue
+      k={`${fmtDate(ct.startDate)} → ${fmtDate(ct.endDate)}`}
+      hint={str(ct.marketer)}
+      v={ct.contractedPowerkW?.length ? `${ct.contractedPowerkW.map((k) => fmtNum(k, 2)).join(' / ')} kW` : '—'}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two },
+  chip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+});

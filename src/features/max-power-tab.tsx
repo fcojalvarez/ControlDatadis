@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { BarChart, ProgressBar } from '@/components/bar-chart';
-import { Card, Chips, DataTable, Disclosure, Empty, SavedDataNotice, KeyValue, Loading, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
+import { BarChart } from '@/components/bar-chart';
+import { Select } from '@/components/select';
+import { Card, DataTable, Disclosure, InlineLoading, KeyValue, SavedDataNotice, Screen, T } from '@/components/ui';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeMaxPower, type MaxPowerReading } from '@/lib/consumption';
 import { fmtDate, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
@@ -13,9 +15,9 @@ import { TripRiskSection } from './trip-risk';
 import { rangeMonths, type RangeKey, type SupplyRef } from './types';
 
 const OPTIONS: { value: RangeKey; label: string }[] = [
-  { value: '6m', label: '6 meses' },
-  { value: '12m', label: '12 meses' },
-  { value: '24m', label: '24 meses' },
+  { value: '6m', label: '6 m' },
+  { value: '12m', label: '12 m' },
+  { value: '24m', label: '24 m' },
 ];
 
 type MonthRow = { key: string; max: MaxPowerReading; byPeriod: Record<string, MaxPowerReading> };
@@ -54,84 +56,88 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
   return (
     <Screen refreshing={q.loading && !!q.data} onRefresh={q.refresh}>
       <TripRiskSection supply={supply} />
+
+      {/* ---------- Picos medidos por el contador ---------- */}
       <Card
-        title="Picos de potencia medidos"
-        info="Es la potencia más alta que has demandado en cada mes (en kW), registrada por tu contador. Si se acerca o supera la contratada, puede saltar el limitador. Si siempre queda muy por debajo, estás pagando potencia que no usas.">
-        <Chips options={OPTIONS} value={range} onChange={setRange} />
-      </Card>
-      {q.loading && !q.data ? <Loading /> : null}
-      <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
-      {q.data && rows.length === 0 ? <Empty text="La distribuidora no ha publicado potencias máximas para este periodo." /> : null}
-
-      {rows.length > 0 && (
-        <>
-          <Card>
-            <Row>
-              <Stat
-                label="Pico máximo"
-                value={fmtKW(absMax?.kw)}
+        title="Picos medidos"
+        info="La potencia más alta (media de 15 minutos) que ha medido tu contador en cada mes y periodo. Si se acerca o supera la contratada, puede saltar el limitador; si siempre queda muy por debajo, pagas potencia que no usas."
+        right={<Select<RangeKey> title="Periodo" value={range} onChange={setRange} options={OPTIONS} />}>
+        {q.loading && !q.data ? <InlineLoading text="Cargando…" /> : null}
+        <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
+        {q.data && rows.length === 0 ? <T variant="small">La distribuidora no ha publicado picos para este periodo.</T> : null}
+        {rows.length > 0 && (
+          <>
+            <View style={styles.minis}>
+              <Mini
+                label="Máximo"
+                value={fmtKW(absMax?.kw, 2)}
+                sub={absMax ? `${fmtDate(absMax.date)} ${absMax.time}` : undefined}
                 color={p1 && absMax && absMax.kw > p1 ? c.danger : undefined}
-                sub={absMax ? `${fmtDate(absMax.date)} a las ${absMax.time}` : undefined}
               />
-              <Stat
-                label="Contratada"
-                value={contracted.length ? `${fmtNum(p1, 2)} kW` : '—'}
-                sub={contracted.length > 1 ? contracted.map((k, i) => `P${i + 1} ${fmtNum(k, 2)} kW`).join(' · ') : undefined}
-              />
-              <Stat label="Media de los picos" value={fmtKW(avgMax)} sub="de cada mes" />
-              <Stat label="Hora habitual del pico" value={typicalHour ? `${typicalHour}:00` : '—'} />
-            </Row>
-            {p1 > 0 && absMax && (
-              <View style={{ gap: 6 }}>
-                <ProgressBar value={absMax.kw} max={p1} color={usage > 100 ? c.danger : usage > 85 ? c.warning : c.tint} />
-                <T variant="small">Tu pico es el {fmtNum(usage, 0)} % de la potencia contratada.</T>
-              </View>
-            )}
-          </Card>
-
-          <Card title="Pico de cada mes" subtitle="En rojo, los meses en los que superaste la potencia contratada">
+              <Mini label="Uso" value={p1 ? `${fmtNum(usage, 0)} %` : '—'} sub={p1 ? `de ${fmtNum(p1, 2)} kW` : undefined} color={usage > 100 ? c.danger : usage > 85 ? c.warning : undefined} />
+              <Mini label="Hora típica" value={typicalHour ? `${typicalHour}:00` : '—'} sub={`media ${fmtKW(avgMax, 1)}`} />
+            </View>
             <BarChart
               data={monthly.map((m) => ({
                 label: fmtMonthShort(m.key).split(' ')[0],
                 detail: fmtMonthLong(m.key),
                 segments: [{ value: m.max.kw, color: p1 && m.max.kw > p1 ? c.danger : c.tint }],
-                note: `${fmtDate(m.max.date)} a las ${m.max.time} · periodo ${m.max.period}`,
+                note: `${fmtDate(m.max.date)} a las ${m.max.time} · ${m.max.period}`,
               }))}
               formatValue={(v) => fmtKW(v, 2)}
-              referenceLines={p1 ? [{ value: p1, color: c.warning, label: `contratada ${fmtNum(p1, 2)} kW` }] : []}
+              referenceLines={p1 ? [{ value: p1, color: c.danger, label: `contratada ${fmtNum(p1, 2)} kW` }] : []}
+              height={170}
             />
-            <Disclosure title="Ver tabla por mes y periodo">
+            <Disclosure title="Ver datos">
               <DataTable
                 columns={[
                   { title: 'Mes', render: (m: MonthRow) => fmtMonthShort(m.key) },
                   ...periods.map((p) => ({
                     title: p,
-                    render: (m: MonthRow) => (m.byPeriod[p] ? fmtNum(m.byPeriod[p].kw, 2) : '—'),
+                    render: (m: MonthRow) => (m.byPeriod[p] ? `${fmtNum(m.byPeriod[p].kw, 2)}` : '—'),
                     color: (m: MonthRow) => (p1 && m.byPeriod[p] && m.byPeriod[p].kw > p1 ? c.danger : undefined),
                   })),
                 ]}
                 rows={[...monthly].reverse()}
               />
-              <T variant="small">Valores en kW</T>
-            </Disclosure>
-          </Card>
-
-          <Card title="Todas las lecturas" subtitle={`${rows.length} registros de la distribuidora`}>
-            <Disclosure title="Ver todas las lecturas">
               {[...rows].reverse().map((r, i) => (
                 <KeyValue
                   key={i}
                   k={`${fmtDate(r.date)} · ${r.time}`}
-                  hint={`Periodo ${r.period}`}
-                  v={<T style={{ fontWeight: '700', color: p1 && r.kw > p1 ? c.danger : c.text }}>{fmtKW(r.kw, 3)}</T>}
+                  hint={r.period}
+                  v={<T style={{ fontWeight: '700', color: p1 && r.kw > p1 ? c.danger : c.text }}>{fmtKW(r.kw, 2)}</T>}
                 />
               ))}
             </Disclosure>
-          </Card>
-        </>
-      )}
+          </>
+        )}
+      </Card>
+
       <ReactiveSection supply={supply} />
-      <UpdatedAt ts={q.updatedAt} loading={q.loading} />
     </Screen>
   );
 }
+
+function Mini({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  const c = useTheme();
+  return (
+    <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
+      <T variant="small" numberOfLines={1}>
+        {label}
+      </T>
+      <T style={{ fontWeight: '800', fontSize: 16, color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </T>
+      {sub ? (
+        <T variant="small" numberOfLines={1}>
+          {sub}
+        </T>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  minis: { flexDirection: 'row', gap: Spacing.two },
+  mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 1 },
+});

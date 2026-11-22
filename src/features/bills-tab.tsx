@@ -1,23 +1,20 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
+import { Select } from '@/components/select';
 import {
-  Button,
   Card,
-  Chips,
   Empty,
   InlineLoading,
   KeyValue,
   Loading,
   Notice,
-  Row,
   SavedDataNotice,
   Screen,
-  Stat,
   T,
-  UpdatedAt,
 } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,7 +23,6 @@ import { normalize } from '@/lib/consumption';
 import { cap, fmtDate, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS } from '@/lib/periods';
 import { contractPeriods } from '@/lib/trip-risk';
-import type { Tariff } from '@/lib/tariff';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -92,57 +88,69 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
 
   const openTariff = () => router.push({ pathname: '/tariff/[cups]', params: { cups: supply.cups } });
 
+  const openBill = bills.length && bills[bills.length - 1].open ? bills[bills.length - 1] : null;
+  const priceLine =
+    current.kind === 'single'
+      ? `${fmtNum(current.energy.P1, 3)} €/kWh`
+      : PERIODS.map((p) => `${PERIOD_LABELS[p]} ${fmtNum(current.energy[p], 3)}`).join(' · ') + ' €/kWh';
+
   return (
     <Screen refreshing={q.loading && readings.length > 0} onRefresh={q.refresh}>
+      {/* ---------- Tarifa (toca para editar) ---------- */}
       <Card
-        title="Tu tarifa"
-        info="Datadis no da los precios de tu comercializadora: las facturas se estiman con los precios que pongas aquí y tu consumo real. Pueden no coincidir al céntimo con las reales (redondeos, bono social, regularizaciones, lecturas estimadas…).">
+        title={current.name}
+        onPress={openTariff}
+        info="Datadis no da los precios de tu comercializadora: las facturas se estiman con los precios de tu tarifa y tu consumo real. Pueden no coincidir al céntimo (redondeos, bono social, regularizaciones, lecturas estimadas…).">
+        <T variant="small">{priceLine}</T>
+        <T variant="small">
+          {cfg.billingDay === 1 ? 'Meses naturales' : `Facturas del día ${cfg.billingDay} al ${cfg.billingDay - 1}`}
+          {cfg.history.length > 1 ? ` · ${cfg.history.length - 1} cambio${cfg.history.length > 2 ? 's' : ''} de precio` : ''}
+        </T>
         {!configured ? (
-          <Notice tone="warning">
-            Estás usando precios genéricos. Pon los de tu factura para que las estimaciones se parezcan a las reales.
-          </Notice>
+          <View style={[styles.warn, { backgroundColor: c.backgroundElement }]}>
+            <Ionicons name="alert-circle-outline" size={18} color={c.warning} />
+            <T variant="small" style={{ color: c.text, flex: 1 }}>
+              Precios genéricos. Toca para poner los de tu factura.
+            </T>
+          </View>
         ) : null}
-        <TariffSummary t={current} />
-        <KeyValue k="Ciclo de facturación" v={cfg.billingDay === 1 ? 'Meses naturales' : `Del día ${cfg.billingDay} al ${cfg.billingDay - 1}`} />
-        {cfg.history.length > 1 ? <KeyValue k="Cambios de precio" v={`${cfg.history.length - 1}`} hint="Cada día se calcula con los precios vigentes entonces" /> : null}
-        <Button title="Editar tarifa, ciclo y ofertas" variant={configured ? 'secondary' : 'primary'} onPress={openTariff} />
       </Card>
 
-      <Chips
-        options={[
-          { value: 12, label: 'Último año' },
-          { value: 24, label: 'Últimos 2 años' },
-        ]}
-        value={range}
-        onChange={setRange}
-      />
-
-      {q.loading && readings.length === 0 ? <Loading text="Descargando tu consumo para calcular las facturas…" /> : null}
-      {q.loading && readings.length > 0 ? (
-        <InlineLoading text={q.pending ? `Descargando de Datadis: faltan ${q.pending} de ${q.total} meses…` : 'Actualizando con Datadis…'} />
-      ) : null}
+      {q.loading && readings.length === 0 ? <Loading text="Descargando tu consumo…" /> : null}
+      {q.loading && readings.length > 0 ? <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} /> : null}
       <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
-      {noPower ? <Notice tone="warning">No se conoce la potencia contratada: el término de potencia sale a 0 €.</Notice> : null}
-      {!q.loading && !bills.length && !q.error ? <Empty text="No hay datos de consumo para calcular facturas." /> : null}
+      {noPower ? <Notice tone="warning">Sin potencia contratada: el término de potencia sale a 0 €.</Notice> : null}
+      {!q.loading && !bills.length && !q.error ? <Empty text="Aún no hay consumo para calcular facturas." /> : null}
 
       {bills.length > 0 && (
         <>
+          {/* ---------- Totales ---------- */}
           <Card>
-            <Row>
-              <Stat label={`Total ${closed.length} facturas`} value={fmtEur(total)} sub="cerradas, con impuestos" />
-              <Stat label="Media por factura" value={fmtEur(avg)} sub={`${fmtEur(avg * 12)} al año`} />
-              {maxBill ? <Stat label="La más alta" value={fmtEur(maxBill.cost.total)} sub={periodLabel(maxBill)} /> : null}
-              {bills[bills.length - 1].open ? (
-                <Stat
-                  label="Factura en curso"
-                  value={fmtEur(bills[bills.length - 1].cost.total)}
-                  sub={`${bills[bills.length - 1].days} días hasta ahora`}
-                />
-              ) : null}
-            </Row>
+            <View style={styles.split}>
+              <View style={{ flex: 1 }}>
+                <T variant="hero">{fmtEur(total)}</T>
+                <T variant="small">
+                  {closed.length} facturas · {fmtEur(avg)} de media
+                </T>
+              </View>
+              <Select<Range>
+                title="Periodo"
+                value={range}
+                onChange={setRange}
+                options={[
+                  { value: 12, label: '1 año' },
+                  { value: 24, label: '2 años' },
+                ]}
+              />
+            </View>
+            <View style={styles.miniRow}>
+              {openBill ? <Mini label="En curso" value={fmtEur(openBill.cost.total)} sub={`${openBill.days} días`} /> : null}
+              {maxBill ? <Mini label="La más alta" value={fmtEur(maxBill.cost.total)} sub={periodLabel(maxBill)} /> : null}
+            </View>
           </Card>
 
-          <Card title="Factura a factura" subtitle="Toca una barra para ver su importe">
+          {/* ---------- Gráfica ---------- */}
+          <Card>
             <BarChart
               data={bills.map((b) => ({
                 label: fmtMonthShort(b.start.slice(0, 7)).split(' ')[0],
@@ -154,6 +162,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
                 ],
               }))}
               formatValue={(v) => fmtEur(v)}
+              height={170}
               legend={[
                 { color: c.tint, label: 'Energía' },
                 { color: c.p2, label: 'Potencia' },
@@ -162,53 +171,79 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
             />
           </Card>
 
-          <Card title="Facturas" subtitle="Toca una para ver el desglose">
+          {/* ---------- Lista de facturas ---------- */}
+          <Card title="Facturas">
             {[...bills].reverse().map((b) => (
               <BillRow key={b.start} b={b} />
             ))}
           </Card>
 
+          {/* ---------- Comparador ---------- */}
           <Card
             title="¿Qué tarifa me conviene?"
-            info="Se calcula cuánto habrías pagado con cada oferta usando tu consumo real hora a hora de las últimas facturas cerradas (hasta 12) y tu potencia contratada.">
+            info={
+              comparison
+                ? `Cuánto habrías pagado con cada oferta usando tu consumo real hora a hora del ${fmtDate(comparison.from)} al ${fmtDate(comparison.to)} y tu potencia contratada.`
+                : 'Añade ofertas de otras comercializadoras y verás cuánto habrías pagado con cada una con tu consumo real.'
+            }
+            right={
+              <Pressable onPress={openTariff} hitSlop={10} accessibilityLabel="Añadir oferta">
+                <Ionicons name="add-circle-outline" size={24} color={c.tint} />
+              </Pressable>
+            }>
             {comparison ? (
               <>
-                <T variant="small">
-                  Con tu consumo del {fmtDate(comparison.from)} al {fmtDate(comparison.to)}:
-                </T>
-                <KeyValue k={`${current.name} (la tuya)`} v={<T style={{ fontWeight: '700' }}>{fmtEur(comparison.mine)}</T>} hint={`${fmtEur(comparison.perYear(comparison.mine))} al año`} />
-                {comparison.offers.map((o) => {
-                  const diff = o.total - comparison.mine;
-                  return (
-                    <KeyValue
-                      key={o.tariff.id}
-                      k={o.tariff.name}
-                      hint={
-                        Math.abs(diff) < 0.5
-                          ? 'Mismo coste que la tuya'
-                          : diff < 0
-                            ? `Ahorrarías ${fmtEur(comparison.perYear(-diff))} al año`
-                            : `Pagarías ${fmtEur(comparison.perYear(diff))} más al año`
-                      }
-                      v={<T style={{ fontWeight: '700', color: Math.abs(diff) < 0.5 ? c.text : diff < 0 ? c.p3 : c.danger }}>{fmtEur(o.total)}</T>}
-                    />
-                  );
-                })}
-                {comparison.offers[0].total < comparison.mine ? (
-                  <Notice tone="good">{`La más barata para ti es «${comparison.offers[0].tariff.name}».`}</Notice>
-                ) : (
-                  <Notice tone="good">Tu tarifa actual es la más barata de las que has añadido.</Notice>
-                )}
+                <OfferRow name={`${current.name} (la tuya)`} total={comparison.mine} perYear={comparison.perYear(comparison.mine)} />
+                {comparison.offers.map((o) => (
+                  <OfferRow key={o.tariff.id} name={o.tariff.name} total={o.total} perYear={comparison.perYear(o.total)} diffYear={comparison.perYear(o.total - comparison.mine)} />
+                ))}
               </>
             ) : (
-              <T variant="small">Añade ofertas de otras comercializadoras y verás cuánto habrías pagado con cada una.</T>
+              <T variant="small">Toca + para añadir una oferta.</T>
             )}
-            <Button title="Añadir o editar ofertas" variant="secondary" onPress={openTariff} />
           </Card>
         </>
       )}
-      <UpdatedAt ts={q.updatedAt} loading={q.loading} />
     </Screen>
+  );
+}
+
+function OfferRow({ name, total, perYear, diffYear }: { name: string; total: number; perYear: number; diffYear?: number }) {
+  const c = useTheme();
+  const same = diffYear === undefined || Math.abs(diffYear) < 1;
+  const color = diffYear === undefined || same ? c.text : diffYear < 0 ? c.p3 : c.danger;
+  return (
+    <View style={[styles.offer, { borderTopColor: c.border }]}>
+      <View style={{ flex: 1 }}>
+        <T style={{ fontWeight: diffYear === undefined ? '700' : '500' }} numberOfLines={1}>
+          {name}
+        </T>
+        <T variant="small">{fmtEur(perYear)}/año</T>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <T style={{ fontWeight: '800', color }}>{fmtEur(total)}</T>
+        {diffYear !== undefined && !same ? (
+          <T variant="small" style={{ color, fontWeight: '600' }}>
+            {diffYear < 0 ? `ahorras ${fmtEur(-diffYear)}/año` : `+${fmtEur(diffYear)}/año`}
+          </T>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function Mini({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const c = useTheme();
+  return (
+    <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
+      <T variant="small">{label}</T>
+      <T style={{ fontWeight: '800', fontSize: 16 }}>{value}</T>
+      {sub ? (
+        <T variant="small" numberOfLines={1}>
+          {sub}
+        </T>
+      ) : null}
+    </View>
   );
 }
 
@@ -217,39 +252,22 @@ function periodLabel(b: Bill): string {
   return `${fmtDate(b.start)} – ${fmtDate(b.end)}`;
 }
 
-function TariffSummary({ t }: { t: Tariff }) {
-  return (
-    <>
-      <KeyValue k="Tarifa" v={t.name} />
-      <KeyValue
-        k="Energía"
-        v={
-          t.kind === 'single'
-            ? `${fmtNum(t.energy.P1, 4)} €/kWh`
-            : PERIODS.map((p) => `${PERIOD_LABELS[p]} ${fmtNum(t.energy[p], 4)}`).join('\n') + ' €/kWh'
-        }
-      />
-      <KeyValue k="Potencia" v={`P1 ${fmtNum(t.powerP1, 4)} · P2 ${fmtNum(t.powerP2, 4)} €/kW·día`} />
-    </>
-  );
-}
-
 function BillRow({ b }: { b: Bill }) {
   const c = useTheme();
   const [open, setOpen] = useState(false);
   return (
-    <View style={{ borderBottomWidth: 1, borderBottomColor: c.border, paddingVertical: 10 }}>
+    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingVertical: 10 }}>
       <Pressable onPress={() => setOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
         <View style={{ flex: 1 }}>
           <T style={{ fontWeight: '600' }}>{periodLabel(b)}</T>
           <T variant="small">
-            {b.days} días · {fmtKWh(b.kwh, 0)}
+            {fmtKWh(b.kwh, 0)}
             {b.open ? ' · en curso' : ''}
             {b.incomplete && !b.open ? ' · faltan datos' : ''}
           </T>
         </View>
         <T style={{ fontWeight: '800', fontSize: 18 }}>{fmtEur(b.cost.total)}</T>
-        <T style={{ color: c.tint }}>{open ? '▲' : '▼'}</T>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={c.textSecondary} />
       </Pressable>
       {open ? (
         <View style={{ marginTop: 6 }}>
@@ -276,3 +294,11 @@ function BillRow({ b }: { b: Bill }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  split: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.two },
+  miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
+  mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
+  warn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, padding: 10, marginTop: 4 },
+  offer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+});
