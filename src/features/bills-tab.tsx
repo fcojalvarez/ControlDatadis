@@ -7,6 +7,7 @@ import { BarChart } from '@/components/bar-chart';
 import { Select } from '@/components/select';
 import {
   Card,
+  Disclosure,
   Empty,
   InlineLoading,
   KeyValue,
@@ -173,9 +174,16 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
 
           {/* ---------- Lista de facturas ---------- */}
           <Card title="Facturas">
-            {[...bills].reverse().map((b) => (
+            {[...bills].reverse().slice(0, 4).map((b) => (
               <BillRow key={b.start} b={b} />
             ))}
+            {bills.length > 4 ? (
+              <Disclosure title={`Ver todas (${bills.length})`}>
+                {[...bills].reverse().slice(4).map((b) => (
+                  <BillRow key={b.start} b={b} />
+                ))}
+              </Disclosure>
+            ) : null}
           </Card>
 
           {/* ---------- Comparador ---------- */}

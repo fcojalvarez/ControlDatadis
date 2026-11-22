@@ -275,7 +275,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
         <DataTable
           columns={[
             { title: 'kW', render: (o: (typeof options)[number]) => `${fmtNum(o.kw, 2)}${o.current ? ' ●' : ''}`, width: 70 },
-            { title: 'Cortes/año', render: (o) => fmtTrips(o.expectedTrips, true), color: (o) => tripsColor(c, o.expectedTrips), width: 76 },
+            { title: 'Cortes', render: (o) => fmtTrips(o.expectedTrips, true), color: (o) => tripsColor(c, o.expectedTrips), width: 76 },
             { title: 'Peor mes', render: (o) => fmtPct(o.pWorst), color: (o) => levelColor(c, o.pWorst), width: 68 },
             { title: '€/año', render: (o) => fmtNum(o.annual, 0), width: 56 },
           ]}

@@ -71,11 +71,11 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
               <Mini
                 label="Máximo"
                 value={fmtKW(absMax?.kw, 2)}
-                sub={absMax ? `${fmtDate(absMax.date)} ${absMax.time}` : undefined}
+                sub={absMax ? `${fmtDayMonth(absMax.date)} ${absMax.time}` : undefined}
                 color={p1 && absMax && absMax.kw > p1 ? c.danger : undefined}
               />
               <Mini label="Uso" value={p1 ? `${fmtNum(usage, 0)} %` : '—'} sub={p1 ? `de ${fmtNum(p1, 2)} kW` : undefined} color={usage > 100 ? c.danger : usage > 85 ? c.warning : undefined} />
-              <Mini label="Hora típica" value={typicalHour ? `${typicalHour}:00` : '—'} sub={`media ${fmtKW(avgMax, 1)}`} />
+              <Mini label="Media" value={fmtKW(avgMax, 1)} sub={typicalHour ? `suele ${typicalHour}:00` : undefined} />
             </View>
             <BarChart
               data={monthly.map((m) => ({
@@ -116,6 +116,11 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
       <ReactiveSection supply={supply} />
     </Screen>
   );
+}
+
+function fmtDayMonth(date: string): string {
+  const m = date.match(/^\d{4}[/-](\d{2})[/-](\d{2})/);
+  return m ? `${Number(m[2])}/${Number(m[1])}` : date;
 }
 
 function Mini({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {

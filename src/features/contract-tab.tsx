@@ -47,7 +47,7 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
         <Card
           title="Potencia y tarifa"
           info="Potencia contratada: lo máximo que puedes tener encendido a la vez. P1 se aplica de lunes a viernes de 8 a 24 h y P2 en valle.\n\nBIE: potencia máxima admisible de tu instalación (el límite técnico).\n\nControl de potencia: ICP es el limitador que corta; con maxímetro se factura el exceso.">
-          <KeyValue k="Potencia P1 / P2" v={kw.length ? kw.map((k) => fmtNum(k, 3)).join(' / ') + ' kW' : '—'} />
+          <KeyValue k="Potencia P1 / P2" v={kw.length ? kw.map((k) => fmtNum(k, 2)).join(' / ') + ' kW' : '—'} />
           <KeyValue k="Máxima admisible (BIE)" v={ct.maxPowerInstall ? `${str(ct.maxPowerInstall)} kW` : '—'} />
           <KeyValue k="Tarifa de acceso" v={`${str(ct.accessFare)}${ct.codeFare ? ` (${ct.codeFare})` : ''}`} />
           <KeyValue k="Discriminación" v={str(ct.timeDiscrimination)} />
