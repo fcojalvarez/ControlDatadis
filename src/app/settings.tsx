@@ -6,56 +6,14 @@ import { Button, Card, KeyValue, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
-import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
 import { fmtNum } from '@/lib/format';
 import { cacheClear, cacheStats } from '@/lib/storage';
-
-function NumField({
-  label,
-  unit,
-  value,
-  onChange,
-}: {
-  label: string;
-  unit: string;
-  value: number;
-  onChange: (n: number) => void;
-}) {
-  const c = useTheme();
-  const [text, setText] = useState(String(value).replace('.', ','));
-  return (
-    <View style={[styles.field, { borderBottomColor: c.border }]}>
-      <T style={{ flex: 1 }}>{label}</T>
-      <TextInput
-        value={text}
-        onChangeText={(t) => {
-          setText(t);
-          const n = Number(t.replace(',', '.'));
-          if (!Number.isNaN(n)) onChange(n);
-        }}
-        keyboardType="decimal-pad"
-        style={[styles.numInput, { color: c.text, backgroundColor: c.backgroundElement }]}
-      />
-      <T variant="small" style={{ width: 62 }}>
-        {unit}
-      </T>
-    </View>
-  );
-}
 
 export default function SettingsScreen() {
   const c = useTheme();
   const { settings, updateSettings, signOut, username } = useSession();
-  const [prices, setPrices] = useState<Prices>(settings.prices);
   const [newNif, setNewNif] = useState('');
-  const [formKey, setFormKey] = useState(0);
   const [stats, setStats] = useState(() => cacheStats());
-
-  const setP = (patch: Partial<Prices>) => {
-    const next = { ...prices, ...patch };
-    setPrices(next);
-    updateSettings({ prices: next });
-  };
 
   const addNif = () => {
     const n = newNif.trim().toUpperCase();
@@ -117,35 +75,11 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <Card title="Precios para estimar el coste" key={formKey}>
-        <T variant="small">Pon los precios de tu factura (sin impuestos). Se usan para calcular el coste estimado.</T>
-        <T variant="label" style={{ marginTop: Spacing.two }}>
-          Energía
+      <Card title="Precios y tarifas">
+        <T variant="small">
+          Los precios de tu comercializadora se configuran en cada suministro: abre el suministro → pestaña Facturas →
+          «Editar tarifa». Allí puedes poner tus precios, el día en que empiezan tus facturas y ofertas para comparar.
         </T>
-        <NumField label="P1 Punta" unit="€/kWh" value={prices.energy.P1} onChange={(n) => setP({ energy: { ...prices.energy, P1: n } })} />
-        <NumField label="P2 Llano" unit="€/kWh" value={prices.energy.P2} onChange={(n) => setP({ energy: { ...prices.energy, P2: n } })} />
-        <NumField label="P3 Valle" unit="€/kWh" value={prices.energy.P3} onChange={(n) => setP({ energy: { ...prices.energy, P3: n } })} />
-        <T variant="label" style={{ marginTop: Spacing.two }}>
-          Potencia
-        </T>
-        <NumField label="P1 Punta" unit="€/kW·día" value={prices.powerP1} onChange={(n) => setP({ powerP1: n })} />
-        <NumField label="P2 Valle" unit="€/kW·día" value={prices.powerP2} onChange={(n) => setP({ powerP2: n })} />
-        <T variant="label" style={{ marginTop: Spacing.two }}>
-          Otros
-        </T>
-        <NumField label="Compensación excedentes" unit="€/kWh" value={prices.surplus} onChange={(n) => setP({ surplus: n })} />
-        <NumField label="Impuesto eléctrico" unit="%" value={prices.electricityTax} onChange={(n) => setP({ electricityTax: n })} />
-        <NumField label="IVA" unit="%" value={prices.vat} onChange={(n) => setP({ vat: n })} />
-        <NumField label="Alquiler contador" unit="€/día" value={prices.meterRental} onChange={(n) => setP({ meterRental: n })} />
-        <Button
-          title="Restablecer valores por defecto"
-          variant="secondary"
-          onPress={() => {
-            setPrices(DEFAULT_PRICES);
-            updateSettings({ prices: DEFAULT_PRICES });
-            setFormKey((k) => k + 1);
-          }}
-        />
       </Card>
 
       <Card title="Datos guardados">

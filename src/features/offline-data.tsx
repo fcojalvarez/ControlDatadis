@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { View } from 'react-native';
 
 import { ProgressBar } from '@/components/bar-chart';
@@ -7,68 +7,64 @@ import { useTheme } from '@/hooks/use-theme';
 import { fmtMonthLong } from '@/lib/format';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
+import { PRIORITY } from './consumption-sync';
 import { supplyBounds } from './period';
-import { useMaxPower } from './queries';
-import { rangeMonths, type SupplyRef } from './types';
+import type { SupplyRef } from './types';
 
-/** Meses de histórico que se intentan descargar como máximo */
+/** Meses de histórico que se intentan guardar como máximo */
 const MAX_HISTORY_MONTHS = 36;
 
-/**
- * Descarga y guarda en el móvil todo el histórico disponible del suministro (consumo horario
- * y potencias máximas), para poder consultarlo aunque Datadis no responda.
- */
-export function OfflineDataCard({ supply }: { supply: SupplyRef }) {
-  const [started, setStarted] = useState(false);
-  return (
-    <Card
-      title="Guardar todo en el móvil"
-      info="Datadis suele ir lento o fallar. La app guarda en el móvil todo lo que descarga y nunca lo borra solo, así que siempre podrás ver tus datos aunque Datadis no responda. Con este botón se descarga de una vez todo el histórico disponible (hasta 3 años)."
-      subtitle="Para consultar tus datos aunque Datadis no funcione">
-      {started ? (
-        <DownloadAll supply={supply} />
-      ) : (
-        <>
-          <T variant="small">
-            Lo que ya has consultado está guardado. Si quieres tener también el resto del histórico (hasta {MAX_HISTORY_MONTHS / 12} años), descárgalo ahora. Puede tardar varios minutos.
-          </T>
-          <Button title="Descargar todo el histórico" variant="secondary" onPress={() => setStarted(true)} />
-        </>
-      )}
-    </Card>
-  );
+function historyMonths(supply: SupplyRef) {
+  const bounds = supplyBounds(supply);
+  const from = addMonths(bounds.max, -(MAX_HISTORY_MONTHS - 1));
+  return monthRange(from > bounds.min ? from : bounds.min, bounds.max);
 }
 
-function DownloadAll({ supply }: { supply: SupplyRef }) {
-  const c = useTheme();
-  const bounds = useMemo(() => supplyBounds(supply), [supply]);
-  const months = useMemo(() => {
-    const from = addMonths(bounds.max, -(MAX_HISTORY_MONTHS - 1));
-    return monthRange(from > bounds.min ? from : bounds.min, bounds.max);
-  }, [bounds]);
-  const cons = useConsumptionMonths(supply, months, 0);
-  const { start, end } = useMemo(() => rangeMonths('24m', supply), [supply]);
-  const maxp = useMaxPower(supply, start, end);
+/**
+ * Descarga en segundo plano todo el histórico disponible (mes a mes, con prioridad baja: lo que
+ * se ve en pantalla siempre va antes). Se usa en la pantalla del suministro.
+ */
+export function useHistorySync(supply: SupplyRef) {
+  const months = useMemo(() => historyMonths(supply), [supply]);
+  return useConsumptionMonths(supply, months, 0, PRIORITY.HISTORY);
+}
 
-  const done = months.filter((k) => cons.months[k] !== undefined).length;
-  const withData = months.filter((k) => (cons.months[k]?.length ?? 0) > 0);
-  const finished = !cons.loading && !maxp.loading;
+/** Estado del histórico guardado en el móvil */
+export function OfflineDataCard({ supply }: { supply: SupplyRef }) {
+  const c = useTheme();
+  const h = useHistorySync(supply);
+  const months = useMemo(() => historyMonths(supply), [supply]);
+  const withData = months.filter((k) => (h.months[k]?.length ?? 0) > 0);
+  const finished = h.pending === 0 && !h.loading;
 
   return (
-    <View style={{ gap: 8 }}>
-      <ProgressBar value={done} max={months.length} color={finished ? c.p3 : c.tint} />
+    <Card
+      title="Histórico guardado en el móvil"
+      info="Para no superar el límite de consultas de Datadis, el histórico se descarga solo, mes a mes y poco a poco, empezando por los meses más recientes. Cada mes se guarda nada más llegar, así que aunque cierres la app no se pierde nada y continúa la próxima vez. Lo guardado se puede consultar aunque Datadis no funcione.">
+      <ProgressBar value={h.done} max={h.total} color={finished ? c.p3 : c.tint} />
       <T variant="small">
-        {finished ? 'Descarga terminada' : 'Descargando…'} · {done} de {months.length} meses revisados
+        {h.done} de {h.total} meses revisados
+        {h.pending ? ` · faltan ${h.pending}` : ''}
       </T>
-      {finished ? (
+      {withData.length ? (
         <T variant="small" style={{ color: c.text }}>
-          {withData.length
-            ? `Tienes guardados ${withData.length} meses de consumo (${fmtMonthLong(withData[0])} – ${fmtMonthLong(withData[withData.length - 1])}).`
-            : 'Datadis no ha devuelto datos de consumo.'}
-          {cons.error ? ` Algunos meses fallaron (${cons.error}); se reintentarán la próxima vez.` : ''}
+          Tienes guardados {withData.length} meses con consumo ({fmtMonthLong(withData[0])} – {fmtMonthLong(withData[withData.length - 1])}).
         </T>
       ) : null}
-      {finished && cons.error ? <Button title="Reintentar los que fallaron" variant="secondary" onPress={cons.retry} /> : null}
-    </View>
+      {h.error ? (
+        <View style={{ gap: 6 }}>
+          <T variant="small" style={{ color: c.warning }}>
+            {h.error}
+          </T>
+          {!/limitado/.test(h.error) ? <Button title="Reintentar ahora" variant="secondary" onPress={h.retry} /> : null}
+        </View>
+      ) : !finished ? (
+        <T variant="small">Descargando poco a poco en segundo plano…</T>
+      ) : (
+        <T variant="small" style={{ color: c.p3, fontWeight: '600' }}>
+          Histórico completo.
+        </T>
+      )}
+    </Card>
   );
 }

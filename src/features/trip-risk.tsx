@@ -15,6 +15,7 @@ import { STANDARD_POWERS, TRIP_CURVE, analyzeTripRisk, contractPeriods, riskLeve
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
 import { useContract, useMaxPower } from './queries';
+import { useSupplyTariffs } from './tariffs';
 import { rangeMonths, type SupplyRef } from './types';
 
 export function riskStorageKey(username: string | null, cups: string) {
@@ -124,7 +125,7 @@ export function TripRiskSummaryCard({ supply, onOpen }: { supply: SupplyRef; onO
 /** Análisis completo para la pestaña Potencia */
 export function TripRiskSection({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
-  const { settings } = useSession();
+  const { current: tariff } = useSupplyTariffs(supply.cups);
   const { risk, loading, noContract } = useTripRisk(supply);
 
   const options = useMemo(() => {
@@ -135,9 +136,9 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
       .sort((a, b) => a - b)
       .map((kw) => {
         const w = whatIf(risk, kw);
-        return { kw, ...w, annual: kw * 365 * (settings.prices.powerP1 + settings.prices.powerP2), current: kw === current };
+        return { kw, ...w, annual: kw * 365 * (tariff.powerP1 + tariff.powerP2), current: kw === current };
       });
-  }, [risk, settings.prices.powerP1, settings.prices.powerP2]);
+  }, [risk, tariff.powerP1, tariff.powerP2]);
 
   if (!risk) {
     return (
@@ -186,7 +187,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
 
       <MarginCard risk={risk} />
 
-      <Card title="¿Y si cambio la potencia?" info="Riesgo estimado de corte y coste anual del término de potencia (con tus precios de Ajustes, sin impuestos) para cada potencia. Se marca la menor potencia con la que el riesgo en tu peor mes queda por debajo del 5 %.">
+      <Card title="¿Y si cambio la potencia?" info="Riesgo estimado de corte y coste anual del término de potencia (con los precios de tu tarifa, sin impuestos) para cada potencia. Se marca la menor potencia con la que el riesgo en tu peor mes queda por debajo del 5 %.">
         {current && recommended && recommended.kw !== current.kw ? (
           <Notice tone={recommended.kw > current.kw ? 'warning' : 'good'}>
             <T style={{ fontWeight: '700' }}>

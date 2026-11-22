@@ -2,18 +2,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { DatadisClient, login as apiLogin } from '@/api/datadis';
 import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
+import type { SupplyTariffs } from '@/lib/tariff';
 import { clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
 
 type Status = 'loading' | 'loggedOut' | 'loggedIn';
 
 type Settings = {
-  prices: Prices;
+  prices: Prices; // precios por defecto para suministros sin tarifa propia (versiones anteriores)
+  tariffs: Record<string, SupplyTariffs>; // tarifa de cada suministro (por CUPS)
   authorizedNifs: string[]; // NIFs que te han autorizado en Datadis
   activeNif: string | null; // null = mis suministros
 };
 
-const DEFAULT_SETTINGS: Settings = { prices: DEFAULT_PRICES, authorizedNifs: [], activeNif: null };
+const DEFAULT_SETTINGS: Settings = { prices: DEFAULT_PRICES, tariffs: {}, authorizedNifs: [], activeNif: null };
 const SETTINGS_KEY = 'settings';
+const COOLDOWN_KEY = 'datadis:cooldown';
 
 type SessionValue = {
   status: Status;
@@ -56,6 +59,11 @@ const client = new DatadisClient(
   () => refreshToken(auth),
 );
 
+// La pausa por límite de consultas se guarda para respetarla aunque se cierre la app
+client.onCooldownChange((until, step) => {
+  setJSON(COOLDOWN_KEY, { until, step });
+});
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [username, setUsername] = useState<string | null>(null);
@@ -63,8 +71,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const [saved, s] = await Promise.all([loadCredentials(), getJSON<Settings>(SETTINGS_KEY, DEFAULT_SETTINGS)]);
-      setSettings({ ...DEFAULT_SETTINGS, ...s, prices: { ...DEFAULT_PRICES, ...s.prices } });
+      const [saved, s, cooldown] = await Promise.all([
+        loadCredentials(),
+        getJSON<Settings>(SETTINGS_KEY, DEFAULT_SETTINGS),
+        getJSON<{ until: number; step: number }>(COOLDOWN_KEY, { until: 0, step: 0 }),
+      ]);
+      // Si Datadis limitó las consultas en una sesión anterior, se respeta la pausa
+      client.restoreCooldown(cooldown.until, cooldown.step);
+      setSettings({ ...DEFAULT_SETTINGS, ...s, prices: { ...DEFAULT_PRICES, ...s.prices }, tariffs: s.tariffs ?? {} });
       if (saved) {
         // El token se obtiene de forma perezosa en la primera consulta
         auth.creds = saved;

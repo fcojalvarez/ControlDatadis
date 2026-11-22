@@ -32,6 +32,7 @@ function RootNavigator() {
         <Stack.Screen name="index" options={{ title: 'Mis suministros' }} />
         <Stack.Screen name="supply/[cups]" options={{ title: 'Suministro' }} />
         <Stack.Screen name="settings" options={{ title: 'Ajustes' }} />
+        <Stack.Screen name="tariff/[cups]" options={{ title: 'Tarifa y facturación' }} />
       </Stack.Protected>
       <Stack.Protected guard={status === 'loggedOut'}>
         <Stack.Screen name="login" options={{ headerShown: false }} />

@@ -97,12 +97,26 @@ export type MeasurementType = 0 | 1; // 0 = horaria, 1 = cuartohoraria
 
 export class DatadisError extends Error {
   status: number;
-  constructor(message: string, status = 0) {
+  /** Datadis ha limitado las consultas: hay que esperar antes de volver a preguntar */
+  rateLimited: boolean;
+  constructor(message: string, status = 0, rateLimited = false) {
     super(message);
     this.name = 'DatadisError';
     this.status = status;
+    this.rateLimited = rateLimited;
   }
 }
+
+/** ¿La respuesta indica que se ha superado el límite de consultas? */
+function isRateLimit(status: number, body: string): boolean {
+  if (status === 429) return true;
+  return status >= 400 && /too many|rate limit|limit exceeded|l[ií]mite de (consultas|peticiones)|demasiadas (consultas|peticiones)/i.test(body);
+}
+
+/** Pausas tras sucesivos avisos de límite: 15 min, 30 min, 1 h, 2 h, 4 h, 6 h */
+const COOLDOWN_STEPS_MIN = [15, 30, 60, 120, 240, 360];
+/** Espera mínima entre dos consultas a Datadis */
+const REQUEST_GAP_MS = 1_500;
 
 export class AuthError extends DatadisError {
   constructor(message = 'Usuario o contraseña incorrectos') {
@@ -211,26 +225,75 @@ export class DatadisClient {
     private refreshToken: () => Promise<string>,
   ) {}
 
-  /*
-   * GET con reintentos: Datadis falla a menudo (timeouts, 5xx, cortes de red), así que se
-   * reintenta hasta 3 veces con esperas crecientes. No se reintenta un 429 (límite de consultas)
-   * ni los errores 4xx, que no se arreglan repitiendo.
-   */
   /** Peticiones en curso (las idénticas se comparten) */
   private inflight = new Map<string, Promise<unknown>>();
   /** Si Datadis está caído, no se le vuelve a preguntar hasta esta hora */
   private downUntil = 0;
+  /** Si Datadis ha limitado las consultas, no se le pregunta hasta esta hora (se guarda en el móvil) */
+  private cooldownUntil = 0;
+  private cooldownStep = 0;
+  /** Cola: las consultas se hacen de una en una y con una pausa entre ellas */
+  private chain: Promise<void> = Promise.resolve();
+  private cooldownListeners = new Set<(until: number) => void>();
+
+  /** Hasta cuándo está en pausa por límite de consultas (0 = no lo está) */
+  get rateLimitedUntil(): number {
+    return this.cooldownUntil > Date.now() ? this.cooldownUntil : 0;
+  }
+
+  /** Restaura una pausa guardada (al abrir la app) */
+  restoreCooldown(until: number, step: number) {
+    if (until > Date.now()) {
+      this.cooldownUntil = until;
+      this.cooldownStep = step;
+    }
+  }
+
+  onCooldownChange(fn: (until: number, step: number) => void): () => void {
+    const l = (until: number) => fn(until, this.cooldownStep);
+    this.cooldownListeners.add(l);
+    return () => this.cooldownListeners.delete(l);
+  }
+
+  private startCooldown() {
+    const minutes = COOLDOWN_STEPS_MIN[Math.min(this.cooldownStep, COOLDOWN_STEPS_MIN.length - 1)];
+    this.cooldownStep += 1;
+    this.cooldownUntil = Date.now() + minutes * 60_000;
+    this.cooldownListeners.forEach((l) => l(this.cooldownUntil));
+  }
+
+  private cooldownError(): DatadisError {
+    const t = new Date(this.cooldownUntil);
+    const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    return new DatadisError(`Datadis ha limitado las consultas. Se reanudará automáticamente a las ${hhmm}.`, 429, true);
+  }
 
   private get<T>(path: string, params: Params = {}): Promise<T> {
     const id = `${path}${buildQuery(params)}`;
     const running = this.inflight.get(id);
     if (running) return running as Promise<T>;
-    const p = this.getWithRetries<T>(path, params).finally(() => this.inflight.delete(id));
+    // Encolar: una consulta cada vez, con pausa entre consultas
+    const p = new Promise<T>((resolve, reject) => {
+      this.chain = this.chain.then(async () => {
+        try {
+          resolve(await this.getWithRetries<T>(path, params));
+        } catch (e) {
+          reject(e);
+        }
+        await new Promise((r) => setTimeout(r, REQUEST_GAP_MS));
+      });
+    }).finally(() => this.inflight.delete(id));
     this.inflight.set(id, p);
     return p;
   }
 
+  /*
+   * GET con reintentos: Datadis falla a menudo (timeouts, 5xx, cortes de red), así que se
+   * reintenta hasta 3 veces con esperas crecientes. No se reintenta si Datadis avisa del límite
+   * de consultas (se hace una pausa larga) ni los errores 4xx, que no se arreglan repitiendo.
+   */
   private async getWithRetries<T>(path: string, params: Params): Promise<T> {
+    if (Date.now() < this.cooldownUntil) throw this.cooldownError();
     if (Date.now() < this.downUntil) {
       throw new DatadisError('Datadis no responde. Se volverá a intentar en unos minutos.');
     }
@@ -241,9 +304,14 @@ export class DatadisClient {
       try {
         const res = await this.getOnce<T>(path, params, true);
         this.downUntil = 0;
+        this.cooldownStep = 0;
         return res;
       } catch (e) {
         lastError = e;
+        if (e instanceof DatadisError && e.rateLimited) {
+          this.startCooldown();
+          throw this.cooldownError();
+        }
         const status = e instanceof DatadisError ? e.status : 0;
         const retryable = status === 0 || status >= 500;
         if (!retryable) throw e;
@@ -271,7 +339,7 @@ export class DatadisClient {
     }
     const text = await res.text();
     if (!res.ok) {
-      throw new DatadisError(describeHttpError(res.status, text), res.status);
+      throw new DatadisError(describeHttpError(res.status, text), res.status, isRateLimit(res.status, text));
     }
     if (!text) return {} as T;
     try {

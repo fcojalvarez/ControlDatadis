@@ -30,7 +30,6 @@ import {
   type Column,
 } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import {
   estimateCost,
@@ -57,6 +56,7 @@ import {
 import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 
 import { useConsumptionMonths } from './consumption-data';
+import { useSupplyTariffs } from './tariffs';
 import {
   MODE_OPTIONS,
   canStep,
@@ -82,7 +82,7 @@ const PERIOD_HOURS: Record<Period, string> = {
 
 export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
-  const { settings } = useSession();
+  const { current: tariff } = useSupplyTariffs(supply.cups);
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
   const [period, setPeriod] = useState<PeriodSel>(() => initialPeriod(bounds));
   const [mtPref, setMt] = useState<MeasurementType>(0);
@@ -102,8 +102,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const readings = useMemo(() => normalize(win.flatMap((k) => q.months[k] ?? []), intervalMin), [q.months, win, intervalMin]);
   const s = useMemo(() => summarize(readings, intervalMin), [readings, intervalMin]);
   const cost = useMemo(
-    () => estimateCost(s.byPeriod, s.surplus, s.days, contractedKW, settings.prices),
-    [s, contractedKW, settings.prices],
+    () => estimateCost(s.byPeriod, s.surplus, s.days, contractedKW, tariff),
+    [s, contractedKW, tariff],
   );
 
   // Comparativas a igualdad de días: el periodo anterior se corta en la misma fecha relativa
@@ -208,10 +208,12 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             ]}
           />
         )}
-        {q.loading && readings.length > 0 ? <InlineLoading text="Actualizando con Datadis…" /> : null}
+        {q.loading && readings.length > 0 ? (
+          <InlineLoading text={q.pending ? `Descargando de Datadis: faltan ${q.pending} de ${q.total} meses…` : 'Actualizando con Datadis…'} />
+        ) : null}
       </Card>
 
-      {loadingFirst ? <Loading text="Descargando tu consumo de Datadis… La primera vez puede tardar hasta un minuto." /> : null}
+      {loadingFirst ? <Loading text="Descargando tu consumo de Datadis mes a mes…" /> : null}
       <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
 
       {!q.loading && !q.error && readings.length === 0 ? (
@@ -389,7 +391,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                 <View style={{ alignItems: 'flex-end' }}>
                   <T style={{ fontWeight: '700' }}>{fmtKWh(s.byPeriod[p], 1)}</T>
                   <T variant="small">
-                    {fmtNum(s.total ? (s.byPeriod[p] / s.total) * 100 : 0, 1)} % · {fmtEur(s.byPeriod[p] * settings.prices.energy[p])}
+                    {fmtNum(s.total ? (s.byPeriod[p] / s.total) * 100 : 0, 1)} % · {fmtEur(s.byPeriod[p] * tariff.energy[p])}
                   </T>
                 </View>
               </View>
@@ -444,18 +446,18 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             <KeyValue
               k="Consumo fijo (siempre encendido)"
               v={fmtKW(s.baseLoadKW, 2)}
-              hint={`Nevera, router, standby… ≈ ${fmtEur(s.baseLoadKW * 24 * 365 * avg(PERIODS.map((p) => settings.prices.energy[p])))} al año`}
+              hint={`Nevera, router, standby… ≈ ${fmtEur(s.baseLoadKW * 24 * 365 * avg(PERIODS.map((p) => tariff.energy[p])))} al año`}
             />
           </Card>
 
           {/* ---------- Coste ---------- */}
           <Card
             title="Coste estimado"
-            info="Cálculo aproximado de lo que pagarías por este periodo con los precios que tienes en Ajustes. No incluye bono social, servicios adicionales ni descuentos de tu comercializadora."
+            info="Cálculo aproximado de lo que pagarías por este periodo con los precios de tu tarifa actual. Puedes cambiarlos en «Editar tarifa». No incluye bono social."
             right={
-              <Link href="/settings">
+              <Link href={{ pathname: '/tariff/[cups]', params: { cups: supply.cups } }}>
                 <T variant="small" style={{ color: c.tint, fontWeight: '700' }}>
-                  Editar precios
+                  Editar tarifa
                 </T>
               </Link>
             }>
@@ -463,8 +465,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               <KeyValue
                 key={p}
                 k={`Energía ${p} ${PERIOD_LABELS[p].toLowerCase()}`}
-                hint={`${fmtKWh(s.byPeriod[p], 1)} × ${fmtNum(settings.prices.energy[p], 4)} €`}
-                v={fmtEur(s.byPeriod[p] * settings.prices.energy[p])}
+                hint={`${fmtKWh(s.byPeriod[p], 1)} × ${fmtNum(tariff.energy[p], 4)} €`}
+                v={fmtEur(s.byPeriod[p] * tariff.energy[p])}
               />
             ))}
             <KeyValue
@@ -473,9 +475,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               v={fmtEur(cost.power)}
             />
             {cost.surplusCompensation > 0 && <KeyValue k="Compensación de excedentes" hint={`${fmtKWh(s.surplus, 0)}`} v={`−${fmtEur(cost.surplusCompensation)}`} />}
-            <KeyValue k="Impuesto eléctrico" hint={`${fmtNum(settings.prices.electricityTax, 2)} %`} v={fmtEur(cost.electricityTax)} />
+            <KeyValue k="Impuesto eléctrico" hint={`${fmtNum(tariff.electricityTax, 2)} %`} v={fmtEur(cost.electricityTax)} />
             <KeyValue k="Alquiler del contador" v={fmtEur(cost.meterRental)} />
-            <KeyValue k="IVA" hint={`${fmtNum(settings.prices.vat, 0)} %`} v={fmtEur(cost.vat)} />
+            {cost.discount > 0 && <KeyValue k="Descuento en energía" hint={`${fmtNum(tariff.discountPct, 1)} %`} v={`−${fmtEur(cost.discount)}`} />}
+            {cost.extras > 0 && <KeyValue k="Servicios adicionales" v={fmtEur(cost.extras)} />}
+            <KeyValue k="IVA" hint={`${fmtNum(tariff.vat, 0)} %`} v={fmtEur(cost.vat)} />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: Spacing.two }}>
               <T variant="subtitle">Total</T>
               <T variant="subtitle">{fmtEur(cost.total)}</T>

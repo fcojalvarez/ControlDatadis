@@ -372,7 +372,7 @@ export function TabBar<V extends string>({
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               style={[styles.tab, { borderBottomColor: active ? c.tint : 'transparent' }]}>
-              <T style={{ fontSize: 15, fontWeight: active ? '700' : '500', color: active ? c.tint : c.textSecondary }}>
+              <T style={{ fontSize: 14, fontWeight: active ? '700' : '500', color: active ? c.tint : c.textSecondary }}>
                 {o.label}
               </T>
             </Pressable>
@@ -542,11 +542,16 @@ export function SavedDataNotice({
   const when = ts
     ? `${new Date(ts).toLocaleDateString('es-ES')} a las ${new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
     : null;
+  const limited = !!error && /limitado/.test(error);
   return (
     <Notice tone="warning">
-      <T style={{ fontWeight: '700' }}>{error ? 'Datadis no responde ahora mismo' : 'Datadis devolvió datos vacíos'}</T>
+      <T style={{ fontWeight: '700' }}>
+        {limited ? 'Datadis ha limitado las consultas' : error ? 'Datadis no responde ahora mismo' : 'Datadis devolvió datos vacíos'}
+      </T>
       <T variant="small" style={{ color: c.text }}>
-        Te mostramos los datos guardados en el móvil{when ? ` (descargados el ${when})` : ''}. Se volverá a intentar más tarde, o desliza hacia abajo para reintentar.
+        {limited
+          ? `${error!.replace(/^Datadis ha limitado las consultas\.\s*/, '')} Mientras tanto ves los datos guardados en el móvil; lo ya descargado no se pierde.`
+          : `Te mostramos los datos guardados en el móvil${when ? ` (descargados el ${when})` : ''}. Se volverá a intentar más tarde, o desliza hacia abajo para reintentar.`}
       </T>
     </Notice>
   );
@@ -586,7 +591,7 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: 'row', borderRadius: 12, padding: 3 },
   segment: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 9, borderColor: 'transparent' },
   tabBar: { paddingHorizontal: Spacing.one, flexGrow: 1 },
-  tab: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 12, borderBottomWidth: 3 },
+  tab: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 6, paddingVertical: 12, borderBottomWidth: 3 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },

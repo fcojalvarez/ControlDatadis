@@ -245,23 +245,49 @@ export const DEFAULT_PRICES: Prices = {
 };
 
 export type CostBreakdown = {
-  energy: number;
+  energy: number; // término de energía (ya con descuento)
+  discount: number; // descuento aplicado sobre la energía
   power: number;
   surplusCompensation: number;
   electricityTax: number;
   meterRental: number;
+  extras: number; // servicios adicionales
   vat: number;
   total: number;
 };
 
+export const ZERO_COST: CostBreakdown = {
+  energy: 0,
+  discount: 0,
+  power: 0,
+  surplusCompensation: 0,
+  electricityTax: 0,
+  meterRental: 0,
+  extras: 0,
+  vat: 0,
+  total: 0,
+};
+
+export function addCosts(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
+  const out = { ...a };
+  for (const k of Object.keys(out) as (keyof CostBreakdown)[]) out[k] = a[k] + b[k];
+  return out;
+}
+
+/**
+ * Coste estimado de un periodo. `prices` puede incluir `discountPct` (% sobre la energía) y
+ * `extrasMonthly` (servicios €/mes, prorrateados por días).
+ */
 export function estimateCost(
   byPeriod: Record<Period, number>,
   surplusKWh: number,
   days: number,
   contractedKW: number[],
-  prices: Prices,
+  prices: Prices & { discountPct?: number; extrasMonthly?: number },
 ): CostBreakdown {
-  const energy = byPeriod.P1 * prices.energy.P1 + byPeriod.P2 * prices.energy.P2 + byPeriod.P3 * prices.energy.P3;
+  const gross = byPeriod.P1 * prices.energy.P1 + byPeriod.P2 * prices.energy.P2 + byPeriod.P3 * prices.energy.P3;
+  const discount = (gross * (prices.discountPct ?? 0)) / 100;
+  const energy = gross - discount;
   const p1 = contractedKW[0] ?? 0;
   const p2 = contractedKW[1] ?? p1;
   const power = days * (p1 * prices.powerP1 + p2 * prices.powerP2);
@@ -270,15 +296,18 @@ export function estimateCost(
   const base = energy - surplusCompensation + power;
   const electricityTax = (base * prices.electricityTax) / 100;
   const meterRental = days * prices.meterRental;
-  const vat = ((base + electricityTax + meterRental) * prices.vat) / 100;
+  const extras = ((prices.extrasMonthly ?? 0) * days * 12) / 365;
+  const vat = ((base + electricityTax + meterRental + extras) * prices.vat) / 100;
   return {
     energy,
+    discount,
     power,
     surplusCompensation,
     electricityTax,
     meterRental,
+    extras,
     vat,
-    total: base + electricityTax + meterRental + vat,
+    total: base + electricityTax + meterRental + extras + vat,
   };
 }
 

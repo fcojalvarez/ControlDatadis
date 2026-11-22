@@ -4,7 +4,6 @@ import { View } from 'react-native';
 import { BarChart, ProgressBar, SplitBar } from '@/components/bar-chart';
 import { Card, Delta, SavedDataNotice, InlineLoading, KeyValue, Loading, Notice, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import { estimateCost, normalize, normalizeMaxPower, pctChange, summarize } from '@/lib/consumption';
 import { WEEKDAYS, fmtDate, fmtEur, fmtKW, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
@@ -15,11 +14,12 @@ import { supplyBounds } from './period';
 import { useContract, useMaxPower } from './queries';
 import { OfflineDataCard } from './offline-data';
 import { TripRiskSummaryCard } from './trip-risk';
+import { useSupplyTariffs } from './tariffs';
 import { rangeMonths, type SupplyRef } from './types';
 
 export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
   const c = useTheme();
-  const { settings } = useSession();
+  const { current: tariff } = useSupplyTariffs(supply.cups);
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
   const cur = bounds.max;
   const prev = addMonths(cur, -1);
@@ -50,23 +50,25 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   }, [q.months, cur, prev, bounds.min]);
 
   const { curS, prevS, prevYoyS, yearS, prevSameDays } = data;
-  const prevCost = estimateCost(prevS.byPeriod, prevS.surplus, prevS.days, contractedKW, settings.prices);
-  const yearCost = estimateCost(yearS.byPeriod, yearS.surplus, yearS.days, contractedKW, settings.prices);
+  const prevCost = estimateCost(prevS.byPeriod, prevS.surplus, prevS.days, contractedKW, tariff);
+  const yearCost = estimateCost(yearS.byPeriod, yearS.surplus, yearS.days, contractedKW, tariff);
 
   const maxRows = useMemo(() => (maxp.data ? normalizeMaxPower(maxp.data.rows) : []), [maxp.data]);
   const maxPeak = maxRows.reduce<(typeof maxRows)[number] | null>((m, r) => (!m || r.kw > m.kw ? r : m), null);
   const p1 = contractedKW[0] ?? 0;
 
-  const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: settings.prices.energy }), [yearS, curS, settings.prices.energy]);
+  const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: tariff.energy }), [yearS, curS, tariff.energy]);
 
   const nothing = !q.loading && !curS.total && !prevS.total && !yearS.total;
 
   return (
     <Screen refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
       {q.loading && !yearS.total && !curS.total ? (
-        <Loading text="Preparando tu resumen… La primera vez se descarga el último año de consumo y puede tardar hasta un minuto." />
+        <Loading text="Descargando tu consumo de Datadis mes a mes, empezando por el más reciente. Los datos irán apareciendo poco a poco." />
       ) : null}
-      {q.loading && (yearS.total > 0 || curS.total > 0) ? <InlineLoading text="Actualizando con Datadis…" /> : null}
+      {q.loading && (yearS.total > 0 || curS.total > 0) ? (
+        <InlineLoading text={q.pending ? `Descargando de Datadis: faltan ${q.pending} de ${q.total} meses…` : 'Actualizando con Datadis…'} />
+      ) : null}
       <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {nothing && !q.error ? <Notice tone="warning">Datadis todavía no tiene datos de consumo para este suministro.</Notice> : null}
 

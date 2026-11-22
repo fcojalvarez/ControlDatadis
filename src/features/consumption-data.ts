@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import type { DistributorError, MeasurementType } from '@/api/datadis';
 import { useSession } from '@/context/session';
 import { DAY, HOUR } from '@/hooks/use-cached-query';
-import { compact, type CompactReading } from '@/lib/consumption';
-import { cacheGet, cacheSet } from '@/lib/storage';
+import type { CompactReading } from '@/lib/consumption';
+import { cacheGet } from '@/lib/storage';
 
-import { fetchRanged } from './queries';
+import { PRIORITY, consumptionSync, type MonthJob } from './consumption-sync';
 import type { SupplyRef } from './types';
 
 /** 'YYYY-MM' */
@@ -38,141 +38,161 @@ export function daysInMonth(k: MonthKey): number {
 }
 
 /**
- * Cuánto tiempo vale la caché de un mes:
+ * Cuánto tiempo vale lo guardado de un mes antes de volver a preguntar a Datadis:
  *  - mes en curso o recién cerrado (las distribuidoras publican con 1-3 días de retraso): 6 h
- *  - mes sin datos: 6 h (puede que la distribuidora aún no los haya publicado)
+ *  - mes reciente sin datos: 6 h (puede que la distribuidora aún no los haya publicado)
+ *  - mes antiguo sin datos (antes de que hubiera histórico): 30 días
  *  - mes cerrado con datos: 30 días
  */
 function monthTtl(k: MonthKey, rowCount: number): number {
   const end = monthDate(addMonths(k, 1));
   const ageMs = Date.now() - end.getTime();
-  if (ageMs < 4 * DAY || rowCount === 0) return 6 * HOUR;
+  if (ageMs < 4 * DAY) return 6 * HOUR;
+  if (rowCount === 0) return ageMs < 60 * DAY ? 6 * HOUR : 30 * DAY;
   return 30 * DAY;
 }
 
-type MonthEntry = { rows: CompactReading[] };
+type MonthEntry = { rows: CompactReading[]; distributorErrors?: DistributorError[] };
 
-type State = {
+type Loaded = {
+  key: string; // conjunto de meses al que pertenece
   months: Record<MonthKey, CompactReading[]>;
-  loading: boolean;
-  error: string | null;
-  errors: DistributorError[];
+  distributorErrors: DistributorError[];
   updatedAt: number | null;
-  stale: boolean; // se muestran datos guardados porque la actualización falló o vino vacía
+  reading: boolean; // leyendo lo guardado en el móvil
 };
 
-/** Agrupa meses en tramos consecutivos */
-function contiguousRuns(keys: MonthKey[]): MonthKey[][] {
-  const sorted = [...keys].sort();
-  const runs: MonthKey[][] = [];
-  for (const k of sorted) {
-    const last = runs[runs.length - 1];
-    if (last && addMonths(last[last.length - 1], 1) === k) last.push(k);
-    else runs.push([k]);
-  }
-  return runs;
-}
-
 /**
- * Curva de consumo de un conjunto de meses. Cada mes se guarda por separado en la caché,
- * de modo que navegar entre periodos reutiliza lo ya descargado y solo se pide a Datadis
- * lo que falta (agrupando meses consecutivos en una sola petición).
+ * Curva de consumo de un conjunto de meses.
+ * 1. Muestra al momento lo que hay guardado en el móvil.
+ * 2. Encola en la descarga global (mes a mes) los meses que faltan o están caducados.
+ * 3. Se actualiza según van llegando los meses.
+ * `priority`: PRIORITY.VIEW para lo que se ve en pantalla, PRIORITY.HISTORY para el histórico.
  */
-export function useConsumptionMonths(supply: SupplyRef, months: MonthKey[], measurementType: MeasurementType) {
+export function useConsumptionMonths(
+  supply: SupplyRef,
+  months: MonthKey[],
+  measurementType: MeasurementType,
+  priority: number = PRIORITY.VIEW,
+) {
   const { client, settings, username } = useSession();
   const nif = settings.activeNif ?? undefined;
   const prefix = `consm:${username}:${nif ?? 'me'}:${supply.cups}:${measurementType}:`;
-  const monthsKey = months.join(',');
-  const [state, setState] = useState<State>({ months: {}, loading: true, error: null, errors: [], updatedAt: null, stale: false });
-  const runId = useRef(0);
+  const monthsKey = `${prefix}|${months.join(',')}`;
+  const [loaded, setLoaded] = useState<Loaded>({ key: '', months: {}, distributorErrors: [], updatedAt: null, reading: true });
+  const sync = useSyncExternalStore(consumptionSync.subscribe, consumptionSync.getSnapshot);
 
-  const load = useCallback(
-    async (force: boolean) => {
-      const id = ++runId.current;
-      const keys = monthsKey ? monthsKey.split(',') : [];
-      const found: Record<MonthKey, CompactReading[]> = {};
-      const missing: MonthKey[] = [];
-      let oldest: number | null = null;
-
-      for (const k of keys) {
-        const c = force ? null : await cacheGet<MonthEntry>(prefix + k);
-        if (c) {
-          found[k] = c.data.rows;
-          oldest = oldest === null ? c.ts : Math.min(oldest, c.ts);
-          if (Date.now() - c.ts > monthTtl(k, c.data.rows.length)) missing.push(k);
-        } else {
-          missing.push(k);
-        }
-      }
-      if (id !== runId.current) return;
-      setState({ months: found, loading: missing.length > 0, error: null, errors: [], updatedAt: oldest, stale: false });
-      if (!missing.length) return;
-
-      const errors: DistributorError[] = [];
-      let error: string | null = null;
-      let keptSaved = false;
-      for (const run of contiguousRuns(missing)) {
-        try {
-          const r = await fetchRanged(monthDate(run[0]), monthDate(run[run.length - 1]), (s, e) =>
-            client.getConsumption({
-              cups: supply.cups,
-              distributorCode: supply.distributorCode,
-              startDate: s,
-              endDate: e,
-              measurementType,
-              pointType: supply.pointType,
-              authorizedNif: nif,
-            }),
-          );
-          errors.push(...r.errors);
-          const byMonth: Record<MonthKey, CompactReading[]> = Object.fromEntries(run.map((k) => [k, []]));
-          for (const row of compact(r.rows)) {
-            const k = row[0].slice(0, 7).replace('/', '-');
-            (byMonth[k] ??= []).push(row);
-          }
-          let partial = false;
-          for (const k of run) {
-            // Meses que Datadis no llegó a devolver: no se guardan (se reintentarán)
-            if (!r.okMonths.has(k.replace('-', '/'))) {
-              partial = true;
-              continue;
-            }
-            // Si Datadis devuelve un mes vacío pero ya lo teníamos guardado con datos, se conserva
-            if (!byMonth[k].length && found[k]?.length) {
-              keptSaved = true;
-              continue;
-            }
-            await cacheSet<MonthEntry>(prefix + k, { rows: byMonth[k] });
-            found[k] = byMonth[k];
-          }
-          if (partial) error = 'Datadis no devolvió algunos meses. Se reintentarán más tarde.';
-        } catch (e) {
-          error = e instanceof Error ? e.message : String(e);
-          // Datadis no responde: no se insiste con el resto de meses (se reintentará más tarde)
-          break;
-        }
-        if (id !== runId.current) return;
-        setState((s) => ({ ...s, months: { ...found } }));
-      }
-      if (id !== runId.current) return;
-      setState({
-        months: { ...found },
-        loading: false,
-        error,
-        errors,
-        updatedAt: error ? oldest : Date.now(),
-        stale: keptSaved || (!!error && Object.values(found).some((rows) => rows.length > 0)),
-      });
-    },
-    [monthsKey, prefix, client, supply.cups, supply.distributorCode, supply.pointType, measurementType, nif],
+  const jobFor = useCallback(
+    (m: MonthKey): MonthJob => ({
+      key: prefix + m,
+      month: m,
+      cups: supply.cups,
+      distributorCode: supply.distributorCode,
+      pointType: supply.pointType,
+      measurementType,
+      authorizedNif: nif,
+      priority,
+    }),
+    [prefix, supply.cups, supply.distributorCode, supply.pointType, measurementType, nif, priority],
   );
 
+  // 1 y 2: leer lo guardado y encolar lo que falta
   useEffect(() => {
-    load(false);
-  }, [load]);
+    let alive = true;
+    const list = monthsKey.split('|')[1] ? monthsKey.split('|')[1].split(',') : [];
+    (async () => {
+      const found: Record<MonthKey, CompactReading[]> = {};
+      const distributorErrors: DistributorError[] = [];
+      const toFetch: MonthKey[] = [];
+      let oldest: number | null = null;
+      for (const m of list) {
+        const c = await cacheGet<MonthEntry>(prefix + m);
+        if (c) {
+          found[m] = c.data.rows;
+          distributorErrors.push(...(c.data.distributorErrors ?? []));
+          oldest = oldest === null ? c.ts : Math.min(oldest, c.ts);
+          if (Date.now() - c.ts > monthTtl(m, c.data.rows.length)) toFetch.push(m);
+        } else {
+          toFetch.push(m);
+        }
+      }
+      if (!alive) return;
+      // Meses que hayan llegado mientras se leía lo guardado
+      for (const m of list) {
+        const f = consumptionSync.fresh.get(prefix + m);
+        if (f) found[m] = f.rows;
+      }
+      setLoaded({ key: monthsKey, months: found, distributorErrors, updatedAt: oldest, reading: false });
+      if (toFetch.length) consumptionSync.enqueue(client, toFetch.map(jobFor));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [monthsKey, prefix, client, jobFor]);
 
-  const refresh = useCallback(() => load(true), [load]);
-  /** Vuelve a intentar solo los meses que faltan o están caducados */
-  const retry = useCallback(() => load(false), [load]);
-  return { ...state, refresh, retry };
+  // 3: incorporar los meses según llegan
+  useEffect(
+    () =>
+      consumptionSync.subscribe((key) => {
+        if (!key || !key.startsWith(prefix)) return;
+        const m = key.slice(prefix.length);
+        const entry = consumptionSync.fresh.get(key);
+        if (!entry) return;
+        if (!monthsKey.split('|')[1].split(',').includes(m)) return;
+        setLoaded((s) => (s.key === monthsKey ? { ...s, months: { ...s.months, [m]: entry.rows }, updatedAt: s.updatedAt ?? Date.now() } : s));
+      }),
+    [prefix, monthsKey],
+  );
+
+  const current = loaded.key === monthsKey ? loaded : { key: monthsKey, months: {}, distributorErrors: [], updatedAt: null, reading: true };
+  const keys = useMemo(() => months.map((m) => prefix + m), [months, prefix]);
+  const pending = keys.filter((k) => sync.pending.has(k)).length;
+  const done = months.filter((m) => current.months[m] !== undefined).length;
+  const hasData = Object.values(current.months).some((r) => r.length > 0);
+
+  let error: string | null = null;
+  if (sync.cooldownUntil && pending) {
+    const t = new Date(sync.cooldownUntil);
+    error = `Datadis ha limitado las consultas. La descarga se reanudará sola a las ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}.`;
+  } else if (sync.pausedUntil && pending) {
+    error = 'Datadis no responde ahora mismo. Se volverá a intentar en unos minutos.';
+  } else {
+    error = keys.map((k) => sync.errors.get(k)).find((e) => !!e) ?? null;
+  }
+  const loading = current.reading || (pending > 0 && !sync.cooldownUntil && !sync.pausedUntil);
+
+  // Actualizar a mano: solo el mes en curso, el anterior y los que falten (los meses cerrados no cambian)
+  const refresh = useCallback(() => {
+    const recent = addMonths(monthKey(new Date()), -1);
+    consumptionSync.enqueue(
+      client,
+      months.filter((m) => m >= recent || current.months[m] === undefined).map(jobFor),
+      true,
+    );
+  }, [client, months, jobFor, current.months]);
+  /** Vuelve a intentar solo los meses que faltan */
+  const retry = useCallback(
+    () =>
+      consumptionSync.enqueue(
+        client,
+        months.filter((m) => current.months[m] === undefined).map(jobFor),
+        true,
+      ),
+    [client, months, jobFor, current.months],
+  );
+
+  return {
+    months: current.months,
+    loading,
+    error,
+    errors: current.distributorErrors,
+    updatedAt: current.updatedAt,
+    stale: !!error && hasData,
+    /** meses pendientes de descargar / ya disponibles / total */
+    pending,
+    done,
+    total: months.length,
+    refresh,
+    retry,
+  };
 }
