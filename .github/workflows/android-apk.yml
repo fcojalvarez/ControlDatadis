@@ -65,7 +65,10 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.name }}
 
+      # Requiere Settings → Actions → General → Workflow permissions = "Read and write permissions".
+      # Si no está activado, el APK sigue disponible como artifact de la ejecución.
       - name: Publicar Release
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-${{ steps.apk.outputs.version }}-build${{ github.run_number }}
