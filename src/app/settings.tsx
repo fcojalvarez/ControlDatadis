@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { UpdateCard } from '@/components/update';
 import { Button, Card, KeyValue, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
@@ -172,6 +173,8 @@ export default function SettingsScreen() {
           }
         />
       </Card>
+
+      <UpdateCard />
 
       <Card title="Acerca de">
         <T variant="small">

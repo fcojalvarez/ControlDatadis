@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { DistributorError, Supply } from '@/api/datadis';
 import { Card, Chips, Empty, Loading, Notice, SavedDataNotice, SectionTitle, T, UpdatedAt, Screen } from '@/components/ui';
+import { UpdateBanner } from '@/components/update';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useContract } from '@/features/queries';
@@ -54,6 +55,7 @@ export default function SuppliesScreen() {
         }}
       />
       <Screen refreshing={q.loading && !!q.data} onRefresh={q.refresh}>
+        <UpdateBanner />
         <View>
           <T variant="small">Sesión iniciada como {username}</T>
           {settings.activeNif ? <T variant="small">Viendo los suministros autorizados por {settings.activeNif}</T> : null}

@@ -60,6 +60,8 @@ Cada cambio en el repositorio compila automáticamente un APK con GitHub Actions
 2. Ábrelo y permite instalar apps de origen desconocido si Android lo pide.
 3. Las versiones nuevas se instalan encima sin perder los datos guardados.
 
+**Actualización desde la propia app:** la app consulta la última Release de GitHub al abrirse (como mucho cada 12 h) y desde Ajustes → Actualizaciones. Si hay una build más nueva muestra un aviso en la pantalla de inicio; al pulsar *Actualizar* descarga el APK con barra de progreso y abre el instalador de Android (la primera vez Android pide permitir instalar apps de esta fuente). El número de build es el `versionCode` de Android, que el flujo de CI fija con el número de ejecución.
+
 ## Funciona aunque Datadis falle
 
 Datadis suele ir lento, fallar o limitar las consultas, así que la app es *offline first*:

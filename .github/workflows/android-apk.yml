@@ -42,6 +42,19 @@ jobs:
           npx tsc --noEmit
           npx eslint src
 
+      # El número de ejecución es el número de build (versionCode de Android): la app lo usa
+      # para saber si hay una versión más nueva publicada en Releases.
+      - name: Número de build
+        run: |
+          node -e "
+            const fs = require('fs');
+            const j = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            j.expo.android.versionCode = Number(process.env.BUILD);
+            fs.writeFileSync('app.json', JSON.stringify(j, null, 2));
+          "
+        env:
+          BUILD: ${{ github.run_number }}
+
       - name: Generar proyecto Android
         run: npx expo prebuild --platform android --no-install
         env:
@@ -77,6 +90,9 @@ jobs:
           make_latest: true
           files: ${{ steps.apk.outputs.name }}
           body: |
+            ${{ github.event.head_commit.message }}
+
+            ---
             APK para Android generado automáticamente desde `${{ github.sha }}`.
 
             **Cómo instalarlo:** descarga el archivo `.apk` desde el móvil, ábrelo y acepta instalar apps de origen desconocido si te lo pide.
