@@ -52,10 +52,27 @@ También muestra tu **margen** concreto (a cuántos kW no salta, en minutos o en
 
 Cada bloque tiene un botón **?** con una explicación en lenguaje sencillo. Modo claro y oscuro.
 
+## Instalar en Android (APK)
+
+Cada cambio en el repositorio compila automáticamente un APK con GitHub Actions (`.github/workflows/android-apk.yml`) y lo publica en **Releases**:
+
+1. Abre en el móvil la página de *Releases* del repositorio y descarga el último `ControlDatadis-….apk`.
+2. Ábrelo y permite instalar apps de origen desconocido si Android lo pide.
+3. Las versiones nuevas se instalan encima sin perder los datos guardados.
+
+## Funciona aunque Datadis falle
+
+Datadis suele ir lento, fallar o limitar las consultas, así que la app es *offline first*:
+
+- **Todo lo descargado se guarda en el móvil** (ficheros en el almacenamiento interno de la app) y **nunca se borra solo**, ni siquiera al cerrar sesión. Solo se borra desde Ajustes → Datos guardados.
+- Siempre se muestran primero los datos guardados; Datadis solo se consulta si están caducados (mes en curso: 6 h; meses cerrados: 30 días) o si deslizas para actualizar.
+- Si Datadis falla o devuelve una respuesta vacía, **se conservan los datos guardados** y se avisa de la fecha en que se descargaron. Los meses que no llegan no se guardan como vacíos.
+- Reintentos automáticos (3 intentos con espera creciente), peticiones idénticas compartidas y pausa de 2 minutos tras una caída para no saturar.
+- Botón **"Descargar todo el histórico"** (Resumen) para guardar hasta 3 años de consumo y poder consultarlo sin conexión.
+
 ## Privacidad
 
 - Las credenciales se guardan cifradas en el dispositivo (`expo-secure-store`, Keychain/Keystore) y solo se envían a `datadis.es`.
-- Las respuestas se guardan en el dispositivo **mes a mes** para no superar los límites de consultas de Datadis: solo se descarga lo que falta (mes en curso y recién cerrado: 6 h; meses cerrados: 30 días). Desliza hacia abajo para forzar la actualización.
 - No hay servidor intermedio.
 
 ## Desarrollo
