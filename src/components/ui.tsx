@@ -58,10 +58,12 @@ export function Screen({
   children,
   refreshing,
   onRefresh,
+  scrollEnabled = true,
 }: {
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  scrollEnabled?: boolean;
 }) {
   const c = useTheme();
   return (
@@ -69,6 +71,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={styles.screen}
       contentInsetAdjustmentBehavior="automatic"
+      scrollEnabled={scrollEnabled}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={c.tint} /> : undefined

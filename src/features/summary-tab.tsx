@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart, SplitBar } from '@/components/bar-chart';
+import { DraggableList } from '@/components/draggable-list';
 import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
@@ -36,61 +37,53 @@ function fullOrder(saved: string[]): SectionId[] {
   return [...valid, ...SECTIONS.map((x) => x.id).filter((id) => !valid.includes(id))];
 }
 
-/** Editor del orden y visibilidad de las tarjetas del Resumen */
-function LayoutEditor() {
+/** Editor del orden (arrastrando) y visibilidad de las tarjetas del Resumen */
+function LayoutEditor({ onDone, onDragStateChange }: { onDone: () => void; onDragStateChange: (dragging: boolean) => void }) {
   const c = useTheme();
   const { settings, updateSettings } = useSession();
-  const [open, setOpen] = useState(false);
   const order = fullOrder(settings.summaryLayout.order);
-  const hidden = new Set(settings.summaryLayout.hidden);
-  const save = (o: SectionId[], h: Set<string>) => updateSettings({ summaryLayout: { order: o, hidden: [...h] } });
-  const move = (i: number, d: -1 | 1) => {
-    const o = [...order];
-    const j = i + d;
-    if (j < 0 || j >= o.length) return;
-    [o[i], o[j]] = [o[j], o[i]];
-    save(o, hidden);
-  };
-  const toggle = (id: SectionId) => {
-    const h = new Set(hidden);
-    if (h.has(id)) h.delete(id);
-    else h.add(id);
-    save(order, h);
-  };
-  if (!open) {
-    return (
-      <Pressable onPress={() => setOpen(true)} style={styles.customize} accessibilityRole="button">
-        <Ionicons name="options-outline" size={18} color={c.tint} />
-        <T style={{ color: c.tint, fontWeight: '700' }}>Personalizar</T>
-      </Pressable>
-    );
-  }
+  const hidden = settings.summaryLayout.hidden;
+  const reorder = useCallback((o: SectionId[]) => updateSettings({ summaryLayout: { order: o, hidden } }), [updateSettings, hidden]);
+  const toggle = (id: SectionId) =>
+    updateSettings({ summaryLayout: { order, hidden: hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id] } });
   return (
-    <Card title="Personalizar" right={<T style={{ color: c.tint, fontWeight: '700' }} onPress={() => setOpen(false)}>Hecho</T>}>
-      {order.map((id, i) => {
-        const sec = SECTIONS.find((x) => x.id === id)!;
-        const off = hidden.has(id);
-        return (
-          <View key={id} style={[styles.editRow, { borderTopColor: c.border }]}>
-            <Ionicons name={sec.icon} size={20} color={off ? c.textSecondary : c.tint} />
-            <T style={{ flex: 1, color: off ? c.textSecondary : c.text, textDecorationLine: off ? 'line-through' : 'none' }}>{sec.label}</T>
-            <Pressable onPress={() => toggle(id)} hitSlop={8} accessibilityLabel={off ? 'Mostrar' : 'Ocultar'}>
-              <Ionicons name={off ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textSecondary} />
-            </Pressable>
-            <Pressable onPress={() => move(i, -1)} disabled={i === 0} hitSlop={8} accessibilityLabel="Subir">
-              <Ionicons name="chevron-up" size={22} color={i === 0 ? c.border : c.text} />
-            </Pressable>
-            <Pressable onPress={() => move(i, 1)} disabled={i === order.length - 1} hitSlop={8} accessibilityLabel="Bajar">
-              <Ionicons name="chevron-down" size={22} color={i === order.length - 1 ? c.border : c.text} />
-            </Pressable>
-          </View>
-        );
-      })}
+    <Card title="Ordenar tarjetas" right={<T style={{ color: c.tint, fontWeight: '700' }} onPress={onDone}>Hecho</T>}>
+      <T variant="small">Arrastra desde ≡ para cambiar el orden. Toca el ojo para ocultar o mostrar.</T>
+      <DraggableList
+        items={order}
+        onReorder={reorder}
+        onDragStateChange={onDragStateChange}
+        renderRow={(id) => {
+          const sec = SECTIONS.find((x) => x.id === id)!;
+          const off = hidden.includes(id);
+          return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 4 }}>
+              <Ionicons name={sec.icon} size={20} color={off ? c.textSecondary : c.tint} />
+              <T style={{ flex: 1, color: off ? c.textSecondary : c.text, textDecorationLine: off ? 'line-through' : 'none' }}>{sec.label}</T>
+              <Pressable onPress={() => toggle(id)} hitSlop={10} accessibilityLabel={off ? 'Mostrar' : 'Ocultar'}>
+                <Ionicons name={off ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textSecondary} />
+              </Pressable>
+            </View>
+          );
+        }}
+      />
     </Card>
   );
 }
 
-export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
+export function SummaryTab({
+  supply,
+  onOpen,
+  editing = false,
+  onDoneEditing,
+}: {
+  supply: SupplyRef;
+  onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void;
+  /** Modo de ordenar tarjetas (se activa desde la cabecera) */
+  editing?: boolean;
+  onDoneEditing?: () => void;
+}) {
+  const [dragging, setDragging] = useState(false);
   const c = useTheme();
   const { current: tariff } = useSupplyTariffs(supply.cups);
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
@@ -201,7 +194,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   };
 
   return (
-    <Screen refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
+    <Screen scrollEnabled={!dragging} refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
       {q.loading && !yearS.total && !curS.total ? <Loading text="Descargando tu consumo…" /> : null}
       {q.loading && (yearS.total > 0 || curS.total > 0) ? (
         <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} />
@@ -209,11 +202,11 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
       <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {nothing && !q.error ? <Notice tone="warning">Datadis aún no tiene datos de consumo de este suministro.</Notice> : null}
 
+      {editing ? <LayoutEditor onDone={() => onDoneEditing?.()} onDragStateChange={setDragging} /> : null}
+
       {orderedIds.map((id) => (
         <Fragment key={id}>{sections[id]}</Fragment>
       ))}
-
-      <LayoutEditor />
     </Screen>
   );
 }

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BottomSheet } from '@/components/select';
 import { Button, T } from '@/components/ui';
@@ -70,7 +70,7 @@ export function DateRangePicker({
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Elegir fechas">
-      <View style={styles.presets}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presets}>
         {presets.map((p) => (
           <Pressable
             key={p.label}
@@ -84,7 +84,7 @@ export function DateRangePicker({
             </T>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <View style={styles.monthHeader}>
         <Pressable onPress={() => canPrev && setMonth(addMonths(month, -1))} hitSlop={10} disabled={!canPrev} accessibilityLabel="Mes anterior">
@@ -149,12 +149,12 @@ export function DateRangePicker({
 }
 
 const styles = StyleSheet.create({
-  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.two },
+  presets: { flexDirection: 'row', gap: 8, paddingBottom: Spacing.two },
   preset: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   monthHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   weekday: { width: `${100 / 7}%`, textAlign: 'center', paddingVertical: 4 },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1.15, alignItems: 'center', justifyContent: 'center' },
+  cell: { width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' },
   day: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   quick: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: Spacing.two },
 });

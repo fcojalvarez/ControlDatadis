@@ -1,7 +1,8 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { TabBar } from '@/components/ui';
 import { BillsTab } from '@/features/bills-tab';
@@ -35,6 +36,7 @@ export default function SupplyScreen() {
     validDateTo?: string;
   }>();
   const [tab, setTab] = useState<Tab>('resumen');
+  const [editing, setEditing] = useState(false);
 
   const supply: SupplyRef = useMemo(
     () => ({
@@ -54,9 +56,21 @@ export default function SupplyScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
-      <Stack.Screen options={{ title: supply.address || supply.cups }} />
+      <Stack.Screen
+        options={{
+          title: supply.address || supply.cups,
+          headerRight:
+            tab === 'resumen'
+              ? () => (
+                  <Pressable onPress={() => setEditing((v) => !v)} hitSlop={12} accessibilityLabel="Ordenar tarjetas">
+                    <Ionicons name={editing ? 'checkmark' : 'reorder-four-outline'} size={24} color={editing ? c.tint : c.text} />
+                  </Pressable>
+                )
+              : undefined,
+        }}
+      />
       <TabBar options={TABS} value={tab} onChange={setTab} />
-      {tab === 'resumen' && <SummaryTab supply={supply} onOpen={setTab} />}
+      {tab === 'resumen' && <SummaryTab supply={supply} onOpen={setTab} editing={editing} onDoneEditing={() => setEditing(false)} />}
       {tab === 'consumo' && <ConsumptionTab supply={supply} />}
       {tab === 'facturas' && <BillsTab supply={supply} />}
       {tab === 'potencia' && <MaxPowerTab supply={supply} />}

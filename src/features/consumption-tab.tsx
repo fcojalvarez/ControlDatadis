@@ -175,11 +175,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
   // Etiquetas de días: solo el número si todo el rango está en el mismo mes
   const isMonth = range.from.slice(0, 7) === range.to.slice(0, 7);
-  const viewOptions: { value: ChartView; label: string }[] = [
-    ...(nDays > 31 ? [{ value: 'meses' as const, label: 'Por meses' }] : []),
-    { value: 'dias', label: 'Por días' },
-    { value: 'horas', label: 'Por horas del día' },
-    { value: 'semana', label: 'Por día de la semana' },
+  const viewOptions: { value: ChartView; label: string; hint?: string }[] = [
+    ...(nDays > 31 ? [{ value: 'meses' as const, label: 'Meses', hint: 'Un valor por mes' }] : []),
+    { value: 'dias', label: 'Días', hint: 'Un valor por día' },
+    { value: 'horas', label: 'Horas', hint: 'Media de cada hora del día' },
+    { value: 'semana', label: 'Semana', hint: 'Media de cada día de la semana' },
   ];
   const defaultView: ChartView = nDays > 62 ? 'meses' : 'dias';
   const view: ChartView = viewPref && viewOptions.some((o) => o.value === viewPref) ? viewPref : defaultView;
@@ -366,6 +366,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   }
 
   const loadingFirst = q.loading && readings.length === 0;
+  const infoButton = (
+    <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={8} accessibilityLabel="Más información">
+      <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
+    </Pressable>
+  );
   const kind = rangeKind(range);
   const showForecast = kind === 'month' && range.to.slice(0, 7) === bounds.max;
   const forecast = showForecast ? s.avgPerDay * daysInMonth(range.from.slice(0, 7)) : 0;
@@ -418,7 +423,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               </View>
             </View>
             <View style={styles.miniRow}>
-              <Mini label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} />
+              {!isDay ? <Mini label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} /> : null}
               {showForecast ? (
                 <Mini label="Previsión" value={fmtKWh(forecast, 0)} />
               ) : nDays > 62 ? (
@@ -442,22 +447,24 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                   ]}
                 />
               ) : null}
-              {!isDay && !showHeat ? <Select<ChartView> title="Ver por" value={view} onChange={setView} options={viewOptions} /> : null}
+              {!isDay && !showHeat ? <Select<ChartView> title="Agrupar por" value={view} onChange={setView} options={viewOptions} /> : null}
               {nDays <= 31 && !showHeat ? (
                 <Select<MeasurementType>
                   title="Detalle"
                   value={mt}
                   onChange={setMt}
                   options={[
-                    { value: 0, label: 'Cada hora' },
-                    { value: 1, label: 'Cada 15 min', hint: 'Más detalle. No todos los contadores lo ofrecen' },
+                    { value: 0, label: '1 h', hint: 'Un dato por hora' },
+                    { value: 1, label: '15 min', hint: 'Un dato cada 15 minutos. Más detalle; no todos los contadores lo ofrecen' },
                   ]}
                 />
               ) : null}
-              <View style={{ flex: 1 }} />
-              <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={8} accessibilityLabel="Más información">
-                <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
-              </Pressable>
+              {isDay ? (
+                <>
+                  <View style={{ flex: 1 }} />
+                  {infoButton}
+                </>
+              ) : null}
             </View>
             {showInfo ? (
               <View style={[styles.infoBox, { backgroundColor: c.backgroundElement }]}>
@@ -472,10 +479,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             ) : null}
             {!isDay ? (
               <View style={styles.switchRow}>
+                <Switch value={heat} onValueChange={setHeat} trackColor={{ true: c.tint }} />
                 <T variant="small" style={{ flex: 1 }}>
                   Mapa de calor
                 </T>
-                <Switch value={heat} onValueChange={setHeat} trackColor={{ true: c.tint }} />
+                {infoButton}
               </View>
             ) : null}
 
@@ -702,8 +710,8 @@ const styles = StyleSheet.create({
   miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
   periodRow: { flexDirection: 'row' },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flexWrap: 'wrap' },
   infoBox: { borderRadius: 10, padding: 10 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', marginVertical: -4 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   export: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
 });
