@@ -18,20 +18,27 @@ Todo lo que ofrece la API gratuita de Datadis:
 | `get-reactive-data-v2` | Energía reactiva por mes y periodo |
 | `authorizedNif` (todos) | Consulta de suministros de terceros que te han autorizado en Datadis |
 
-Y a partir de esos datos calcula:
+## Pantallas
 
-- Consumo total, media diaria, proyección a 30 días y **consumo base** (lo que está siempre encendido).
-- Gráficas por **días, meses, perfil horario medio, día de la semana** y **curva de un día concreto**.
-- Reparto por periodos **P1 punta / P2 llano / P3 valle** de la tarifa 2.0TD (fines de semana y festivos nacionales incluidos).
-- Autoconsumo: excedentes, generación, autoconsumo y % de autosuficiencia.
-- **Coste estimado** de la factura con tus propios precios (energía por periodo, potencia, compensación de excedentes, impuesto eléctrico, alquiler de contador e IVA).
-- Análisis de potencia: % de uso de la potencia contratada, veces que se ha superado y recomendación de subirla o bajarla.
-- Exportación de la curva de consumo a **CSV**.
+- **Inicio**: suministros activos y anteriores con comercializadora, potencia y tarifa de un vistazo.
+- **Resumen** de cada suministro: este mes (con comparación con los mismos días del mes anterior y previsión), mes pasado (vs. mismo mes del año anterior, coste y reparto por periodos), último año mes a mes, potencia usada frente a contratada, contrato y **consejos de ahorro** automáticos.
+- **Consumo**: navegación por **mes / año / últimos 12 meses** con flechas ‹ ›, datos horarios o cada 15 minutos, comparativas con el periodo anterior y:
+  - Gráficas por día, por mes, por hora del día, por día de la semana, **mapa de calor** (día × hora) y la **curva de un día concreto**. Al tocar una barra se ve su valor exacto y el desglose.
+  - "Ver datos" bajo cada gráfica con la tabla de valores exactos.
+  - Reparto P1 punta / P2 llano / P3 valle (2.0TD) con horarios y coste por periodo.
+  - Autoconsumo: generación, autoconsumo, excedentes y autosuficiencia.
+  - Datos destacados (picos, días de más y menos consumo, consumo fijo en standby…).
+  - **Coste estimado** desglosado con tus precios.
+  - Calidad de los datos (lecturas reales/estimadas) y exportación a **CSV**.
+- **Potencia**: pico de cada mes frente a la contratada, tabla por mes y periodo, todas las lecturas, recomendación de subir/bajar potencia y **energía reactiva**.
+- **Contrato**: punto de suministro, contrato actual e históricos, potencias, tarifa, titularidad y autoconsumo, con explicaciones de cada concepto.
+
+Cada bloque tiene un botón **?** con una explicación en lenguaje sencillo. Modo claro y oscuro.
 
 ## Privacidad
 
 - Las credenciales se guardan cifradas en el dispositivo (`expo-secure-store`, Keychain/Keystore) y solo se envían a `datadis.es`.
-- Las respuestas se guardan en caché en el dispositivo para no superar los límites de consultas de Datadis (mes en curso: 6 h; meses cerrados: 7 días). Desliza hacia abajo para forzar la actualización.
+- Las respuestas se guardan en el dispositivo **mes a mes** para no superar los límites de consultas de Datadis: solo se descarga lo que falta (mes en curso y recién cerrado: 6 h; meses cerrados: 30 días). Desliza hacia abajo para forzar la actualización.
 - No hay servidor intermedio.
 
 ## Desarrollo
@@ -58,7 +65,7 @@ npx eas-cli@latest build --platform ios
 src/
   api/datadis.ts           Cliente de la API de Datadis
   app/                     Pantallas (Expo Router): login, suministros, detalle, ajustes
-  features/                Pestañas del suministro (consumo, potencia, contrato, reactiva) y consultas
+  features/                Pestañas del suministro (resumen, consumo, potencia, contrato), periodos y consultas con caché mensual
   lib/                     Cálculos: periodos 2.0TD, agregados, coste, CSV, formato, almacenamiento
   context/session.tsx      Sesión, token y ajustes
   components/              UI y gráficas SVG

@@ -1,8 +1,7 @@
-import type { ContractDetail, DistributorError, MaxPowerRaw, MeasurementType, ReactiveRow } from '@/api/datadis';
+import type { ContractDetail, DistributorError, MaxPowerRaw, ReactiveRow } from '@/api/datadis';
 import { toYearMonth } from '@/api/datadis';
 import { useSession } from '@/context/session';
 import { DAY, HOUR, useCachedQuery } from '@/hooks/use-cached-query';
-import { compact, type CompactReading } from '@/lib/consumption';
 
 import { monthsBetween, type SupplyRef } from './types';
 
@@ -13,7 +12,7 @@ function ttlFor(end: Date) {
   return includesCurrent ? 6 * HOUR : 7 * DAY;
 }
 
-export function useContract(supply: SupplyRef) {
+export function useContract(supply: Pick<SupplyRef, 'cups' | 'distributorCode'>) {
   const { client, settings, username } = useSession();
   const nif = settings.activeNif ?? undefined;
   return useCachedQuery<{ contracts: ContractDetail[]; errors: DistributorError[] }>(
@@ -28,7 +27,7 @@ export function useContract(supply: SupplyRef) {
  * (algunas distribuidoras fallan si el rango incluye el primer mes del contrato),
  * se reintenta mes a mes para no perder el resto.
  */
-async function fetchRanged<T>(
+export async function fetchRanged<T>(
   start: Date,
   end: Date,
   fetchChunk: (s: string, e: string) => Promise<{ rows: T[]; errors: DistributorError[] }>,
@@ -69,30 +68,6 @@ async function fetchRanged<T>(
   }
   if (!rows.length && lastError) throw lastError;
   return { rows, errors };
-}
-
-export function useConsumption(supply: SupplyRef, start: Date, end: Date, measurementType: MeasurementType) {
-  const { client, settings, username } = useSession();
-  const nif = settings.activeNif ?? undefined;
-  const key = `cons:${username}:${nif ?? 'me'}:${supply.cups}:${toYearMonth(start)}:${toYearMonth(end)}:${measurementType}`;
-  return useCachedQuery<{ rows: CompactReading[]; errors: DistributorError[] }>(
-    key,
-    async () => {
-      const r = await fetchRanged(start, end, (s, e) =>
-        client.getConsumption({
-          cups: supply.cups,
-          distributorCode: supply.distributorCode,
-          startDate: s,
-          endDate: e,
-          measurementType,
-          pointType: supply.pointType,
-          authorizedNif: nif,
-        }),
-      );
-      return { rows: compact(r.rows), errors: r.errors };
-    },
-    ttlFor(end),
-  );
 }
 
 export function useMaxPower(supply: SupplyRef, start: Date, end: Date) {

@@ -1,18 +1,24 @@
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { Segmented } from '@/components/ui';
-import { Spacing } from '@/constants/theme';
+import { TabBar } from '@/components/ui';
 import { ConsumptionTab } from '@/features/consumption-tab';
 import { ContractTab } from '@/features/contract-tab';
 import { MaxPowerTab } from '@/features/max-power-tab';
-import { ReactiveTab } from '@/features/reactive-tab';
+import { SummaryTab } from '@/features/summary-tab';
 import type { SupplyRef } from '@/features/types';
 import { useTheme } from '@/hooks/use-theme';
 
-type Tab = 'consumo' | 'potencia' | 'contrato' | 'reactiva';
+type Tab = 'resumen' | 'consumo' | 'potencia' | 'contrato';
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'resumen', label: 'Resumen' },
+  { value: 'consumo', label: 'Consumo' },
+  { value: 'potencia', label: 'Potencia' },
+  { value: 'contrato', label: 'Contrato' },
+];
 
 export default function SupplyScreen() {
   const c = useTheme();
@@ -25,38 +31,29 @@ export default function SupplyScreen() {
     validDateFrom?: string;
     validDateTo?: string;
   }>();
-  const [tab, setTab] = useState<Tab>('consumo');
+  const [tab, setTab] = useState<Tab>('resumen');
 
-  const supply: SupplyRef = {
-    cups: p.cups,
-    distributorCode: p.distributorCode,
-    pointType: Number(p.pointType) || 5,
-    address: p.address ?? '',
-    distributor: p.distributor ?? '',
-    validDateFrom: p.validDateFrom ?? '',
-    validDateTo: p.validDateTo ?? '',
-  };
+  const supply: SupplyRef = useMemo(
+    () => ({
+      cups: p.cups,
+      distributorCode: p.distributorCode,
+      pointType: Number(p.pointType) || 5,
+      address: p.address ?? '',
+      distributor: p.distributor ?? '',
+      validDateFrom: p.validDateFrom ?? '',
+      validDateTo: p.validDateTo ?? '',
+    }),
+    [p.cups, p.distributorCode, p.pointType, p.address, p.distributor, p.validDateFrom, p.validDateTo],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
-      <Stack.Screen options={{ title: supply.address || 'Suministro' }} />
-      <View style={{ paddingHorizontal: Spacing.three, paddingTop: Spacing.two, alignItems: 'center' }}>
-        <Segmented<Tab>
-          style={{ width: '100%', maxWidth: 800 }}
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'consumo', label: 'Consumo' },
-            { value: 'potencia', label: 'Potencia' },
-            { value: 'contrato', label: 'Contrato' },
-            { value: 'reactiva', label: 'Reactiva' },
-          ]}
-        />
-      </View>
+      <Stack.Screen options={{ title: supply.address || supply.cups }} />
+      <TabBar options={TABS} value={tab} onChange={setTab} />
+      {tab === 'resumen' && <SummaryTab supply={supply} onOpen={setTab} />}
       {tab === 'consumo' && <ConsumptionTab supply={supply} />}
       {tab === 'potencia' && <MaxPowerTab supply={supply} />}
       {tab === 'contrato' && <ContractTab supply={supply} />}
-      {tab === 'reactiva' && <ReactiveTab supply={supply} />}
     </View>
   );
 }

@@ -68,6 +68,10 @@ export function fmtDayShort(key: string): string {
   return `${Number(m[2])}/${Number(m[1])}`;
 }
 
+export function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
 export function pad2(n: number) {
   return String(n).padStart(2, '0');
 }

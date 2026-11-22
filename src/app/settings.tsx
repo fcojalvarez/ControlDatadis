@@ -148,7 +148,7 @@ export default function SettingsScreen() {
       <Card title="Datos">
         <T variant="small">
           Las respuestas de Datadis se guardan en el dispositivo para no superar los límites de consultas: los meses
-          cerrados se guardan una semana y el mes en curso 6 horas. Desliza hacia abajo en cualquier pantalla para forzar
+          cerrados se guardan 30 días y el mes en curso 6 horas. Desliza hacia abajo en cualquier pantalla para forzar
           una actualización.
         </T>
         <Button
@@ -183,5 +183,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   numInput: { width: 90, textAlign: 'right', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 15 },
-  textInput: { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 15 },
+  textInput: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 15 },
 });

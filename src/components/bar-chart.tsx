@@ -2,14 +2,18 @@ import { useState } from 'react';
 import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg';
 
-import { T } from '@/components/ui';
+import { LegendItem, T } from '@/components/ui';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fmtNum } from '@/lib/format';
 
+export type Segment = { value: number; color: string; name?: string };
+
 export type BarDatum = {
   label: string; // etiqueta corta del eje X
-  detail?: string; // texto al seleccionar
-  segments: { value: number; color: string }[]; // apilados de abajo a arriba
+  detail?: string; // título al seleccionar la barra
+  segments: Segment[]; // apilados (de abajo a arriba) o agrupados (lado a lado)
+  note?: string; // texto extra al seleccionar
 };
 
 type Props = {
@@ -18,12 +22,15 @@ type Props = {
   formatValue: (v: number) => string;
   referenceLines?: { value: number; color: string; label: string }[];
   minBarWidth?: number;
-  labelEvery?: number; // muestra una etiqueta cada N barras (auto si se omite)
+  labelEvery?: number;
+  mode?: 'stacked' | 'grouped';
+  legend?: { color: string; label: string }[];
+  totalLabel?: string;
 };
 
-const AXIS_W = 44;
-const BOTTOM = 22;
-const TOP = 8;
+const AXIS_W = 40;
+const BOTTOM = 24;
+const TOP = 10;
 
 function niceMax(v: number): number {
   if (v <= 0) return 1;
@@ -33,7 +40,17 @@ function niceMax(v: number): number {
   return nice * exp;
 }
 
-export function BarChart({ data, height = 200, formatValue, referenceLines = [], minBarWidth = 10, labelEvery }: Props) {
+export function BarChart({
+  data,
+  height = 210,
+  formatValue,
+  referenceLines = [],
+  minBarWidth = 10,
+  labelEvery,
+  mode = 'stacked',
+  legend,
+  totalLabel = 'Total',
+}: Props) {
   const c = useTheme();
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -41,95 +58,100 @@ export function BarChart({ data, height = 200, formatValue, referenceLines = [],
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
   const totals = data.map((d) => d.segments.reduce((s, x) => s + x.value, 0));
-  const maxVal = niceMax(Math.max(0, ...totals, ...referenceLines.map((r) => r.value)) * 1.05);
+  const peaks = data.map((d) => (mode === 'stacked' ? d.segments.reduce((s, x) => s + x.value, 0) : Math.max(0, ...d.segments.map((x) => x.value))));
+  const maxVal = niceMax(Math.max(0, ...peaks, ...referenceLines.map((r) => r.value)) * 1.05);
   const plotH = height - BOTTOM - TOP;
 
   const available = Math.max(0, width - AXIS_W);
-  const slot = data.length ? Math.max(minBarWidth + 2, available / data.length) : 0;
+  const nSeries = mode === 'grouped' ? Math.max(1, ...data.map((d) => d.segments.length)) : 1;
+  const slot = data.length ? Math.max(minBarWidth * nSeries, available / data.length) : 0;
   const chartW = Math.max(available, slot * data.length);
-  const barW = Math.max(2, slot * 0.72);
-  const every = labelEvery ?? Math.max(1, Math.ceil(36 / slot));
+  const groupW = Math.max(2, slot * 0.74);
+  const every = labelEvery ?? Math.max(1, Math.ceil(40 / slot));
   const y = (v: number) => TOP + plotH - (v / maxVal) * plotH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * maxVal);
+  const tickStep = maxVal / 4;
+  const tickDigits = Number.isInteger(tickStep) ? 0 : Number.isInteger(tickStep * 10) ? 1 : 2;
 
   const sel = selected !== null && selected < data.length ? selected : null;
+  const selDatum = sel !== null ? data[sel] : null;
 
   return (
     <View onLayout={onLayout}>
-      <View style={{ minHeight: 34, justifyContent: 'center' }}>
-        {sel !== null ? (
-          <T variant="small" style={{ color: c.text }}>
-            <T variant="small" style={{ fontWeight: '700', color: c.text }}>
-              {data[sel].detail ?? data[sel].label}
-            </T>
-            {'  '}
-            {formatValue(totals[sel])}
-          </T>
+      {/* Panel de detalle de la barra seleccionada */}
+      <View style={{ minHeight: 48, justifyContent: 'center', backgroundColor: c.backgroundElement, borderRadius: 10, padding: 10, marginBottom: 6 }}>
+        {selDatum ? (
+          <View style={{ gap: 2 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+              <T style={{ fontWeight: '700', flex: 1 }}>{selDatum.detail ?? selDatum.label}</T>
+              {mode === 'stacked' && (
+                <T style={{ fontWeight: '700' }}>
+                  {selDatum.segments.length > 1 ? `${totalLabel}: ` : ''}
+                  {formatValue(totals[sel!])}
+                </T>
+              )}
+            </View>
+            {(selDatum.segments.length > 1 || mode === 'grouped') && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }}>
+                {selDatum.segments.map((s, i) => (
+                  <LegendItem key={i} color={s.color} label={`${s.name ?? ''} ${formatValue(s.value)}`.trim()} />
+                ))}
+              </View>
+            )}
+            {selDatum.note ? <T variant="small">{selDatum.note}</T> : null}
+          </View>
         ) : (
-          <T variant="small">Toca una barra para ver el detalle</T>
+          <T variant="small">Toca una barra para ver su valor exacto</T>
         )}
       </View>
+
       {width > 0 && (
         <View style={{ flexDirection: 'row' }}>
           <Svg width={AXIS_W} height={height}>
             {ticks.map((t, i) => (
-              <SvgText
-                key={i}
-                x={AXIS_W - 6}
-                y={y(t) + 4}
-                fontSize={10}
-                fill={c.textSecondary}
-                textAnchor="end">
-                {fmtNum(t, maxVal >= 5 ? 0 : maxVal >= 0.5 ? 1 : 2)}
+              <SvgText key={i} x={AXIS_W - 6} y={y(t) + 4} fontSize={11} fill={c.textSecondary} textAnchor="end">
+                {fmtNum(t, tickDigits)}
               </SvgText>
             ))}
           </Svg>
-          <ScrollView horizontal showsHorizontalScrollIndicator={chartW > available} style={{ flex: 1 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={chartW > available + 1} style={{ flex: 1 }}>
             <Svg width={chartW} height={height}>
               {ticks.map((t, i) => (
                 <Line key={i} x1={0} x2={chartW} y1={y(t)} y2={y(t)} stroke={c.grid} strokeWidth={1} />
               ))}
               {data.map((d, i) => {
-                const x = i * slot + (slot - barW) / 2;
-                let acc = 0;
+                const x0 = i * slot + (slot - groupW) / 2;
                 const dim = sel !== null && sel !== i;
+                let acc = 0;
+                const bw = mode === 'grouped' ? groupW / Math.max(1, d.segments.length) : groupW;
                 return (
-                  <G key={i} opacity={dim ? 0.45 : 1}>
+                  <G key={i} opacity={dim ? 0.4 : 1}>
                     {d.segments.map((s, j) => {
                       if (s.value <= 0) return null;
+                      if (mode === 'grouped') {
+                        const yy = y(s.value);
+                        return (
+                          <Rect key={j} x={x0 + j * bw} y={yy} width={Math.max(1, bw - 1)} height={Math.max(0.5, y(0) - yy)} fill={s.color} rx={bw > 6 ? 2 : 0} />
+                        );
+                      }
                       const y0 = y(acc);
                       acc += s.value;
                       const y1 = y(acc);
-                      return <Rect key={j} x={x} y={y1} width={barW} height={Math.max(0.5, y0 - y1)} fill={s.color} rx={barW > 6 ? 2 : 0} />;
+                      return <Rect key={j} x={x0} y={y1} width={bw} height={Math.max(0.5, y0 - y1)} fill={s.color} rx={bw > 6 ? 2 : 0} />;
                     })}
                     {i % every === 0 && (
-                      <SvgText x={i * slot + slot / 2} y={height - 6} fontSize={10} fill={c.textSecondary} textAnchor="middle">
+                      <SvgText x={i * slot + slot / 2} y={height - 7} fontSize={11} fill={c.textSecondary} textAnchor="middle">
                         {d.label}
                       </SvgText>
                     )}
-                    <Rect
-                      x={i * slot}
-                      y={0}
-                      width={slot}
-                      height={height}
-                      fill="transparent"
-                      onPress={() => setSelected(sel === i ? null : i)}
-                    />
+                    <Rect x={i * slot} y={0} width={slot} height={height} fill="transparent" onPress={() => setSelected(sel === i ? null : i)} />
                   </G>
                 );
               })}
               {referenceLines.map((r, i) => (
                 <G key={`ref${i}`}>
-                  <Line
-                    x1={0}
-                    x2={chartW}
-                    y1={y(r.value)}
-                    y2={y(r.value)}
-                    stroke={r.color}
-                    strokeWidth={1.5}
-                    strokeDasharray="5 4"
-                  />
-                  <SvgText x={4} y={y(r.value) - 4} fontSize={10} fill={r.color}>
+                  <Line x1={0} x2={chartW} y1={y(r.value)} y2={y(r.value)} stroke={r.color} strokeWidth={1.5} strokeDasharray="5 4" />
+                  <SvgText x={4} y={y(r.value) - 5} fontSize={11} fontWeight="bold" fill={r.color}>
                     {r.label}
                   </SvgText>
                 </G>
@@ -138,18 +160,35 @@ export function BarChart({ data, height = 200, formatValue, referenceLines = [],
           </ScrollView>
         </View>
       )}
+      {legend?.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: Spacing.three, rowGap: 4, marginTop: 6 }}>
+          {legend.map((l, i) => (
+            <LegendItem key={i} color={l.color} label={l.label} />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 /** Barra horizontal de reparto (p. ej. P1/P2/P3) */
-export function SplitBar({ parts }: { parts: { value: number; color: string }[] }) {
+export function SplitBar({ parts, height = 16 }: { parts: { value: number; color: string }[]; height?: number }) {
   const c = useTheme();
   const total = parts.reduce((s, p) => s + p.value, 0);
   return (
-    <View style={{ flexDirection: 'row', height: 14, borderRadius: 7, overflow: 'hidden', backgroundColor: c.backgroundElement }}>
-      {total > 0 &&
-        parts.map((p, i) => <View key={i} style={{ flex: p.value / total, backgroundColor: p.color }} />)}
+    <View style={{ flexDirection: 'row', height, borderRadius: height / 2, overflow: 'hidden', backgroundColor: c.backgroundElement }}>
+      {total > 0 && parts.map((p, i) => <View key={i} style={{ flex: p.value / total, backgroundColor: p.color }} />)}
+    </View>
+  );
+}
+
+/** Barra de progreso simple (p. ej. potencia usada / contratada) */
+export function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const c = useTheme();
+  const pct = max > 0 ? Math.min(1, value / max) : 0;
+  return (
+    <View style={{ height: 12, borderRadius: 6, backgroundColor: c.backgroundElement, overflow: 'hidden' }}>
+      <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: color, borderRadius: 6 }} />
     </View>
   );
 }

@@ -121,6 +121,8 @@ export type Summary = {
   minDay: Bucket | null;
   baseLoadKW: number; // consumo base estimado (percentil 10 horario)
   hourProfile: number[]; // media kWh por hora del día (24)
+  hourProfileByPeriod: Record<Period, number[]>; // misma media desglosada por periodo
+  heat: number[][]; // [díaSemana 0=lunes][hora] media kWh
   weekdayAvg: number[]; // media kWh diaria por día de la semana (7)
   daily: Bucket[];
   monthly: Bucket[];
@@ -138,6 +140,13 @@ export function summarize(readings: Reading[], intervalMin: number): Summary {
   let realCount = 0;
   let peak: Reading | null = null;
   const hourSum = new Array(24).fill(0);
+  const hourByPeriod: Record<Period, number[]> = {
+    P1: new Array(24).fill(0),
+    P2: new Array(24).fill(0),
+    P3: new Array(24).fill(0),
+  };
+  const heatSum = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  const heatDays = Array.from({ length: 7 }, () => new Set<string>());
 
   for (const r of readings) {
     total += r.kwh;
@@ -148,6 +157,9 @@ export function summarize(readings: Reading[], intervalMin: number): Summary {
     if (r.real) realCount++;
     if (!peak || r.kwh > peak.kwh) peak = r;
     hourSum[r.hour] += r.kwh;
+    hourByPeriod[r.period][r.hour] += r.kwh;
+    heatSum[r.weekday][r.hour] += r.kwh;
+    heatDays[r.weekday].add(r.day);
   }
 
   const daily = groupBy(readings, (r) => r.day);
@@ -195,6 +207,12 @@ export function summarize(readings: Reading[], intervalMin: number): Summary {
     minDay,
     baseLoadKW,
     hourProfile: hourSum.map((s) => (days ? s / days : 0)),
+    hourProfileByPeriod: {
+      P1: hourByPeriod.P1.map((s) => (days ? s / days : 0)),
+      P2: hourByPeriod.P2.map((s) => (days ? s / days : 0)),
+      P3: hourByPeriod.P3.map((s) => (days ? s / days : 0)),
+    },
+    heat: heatSum.map((row, wd) => row.map((v) => (heatDays[wd].size ? v / heatDays[wd].size : 0))),
     weekdayAvg: weekdaySum.map((s, i) => (weekdayCount[i] ? s / weekdayCount[i] : 0)),
     daily,
     monthly,
@@ -312,4 +330,10 @@ export function readingsToCsv(cups: string, readings: Reading[]): string {
     );
   }
   return lines.join('\n');
+}
+
+/** % de variación de a respecto a b (null si no se puede calcular) */
+export function pctChange(a: number, b: number): number | null {
+  if (!b || !Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return ((a - b) / b) * 100;
 }
