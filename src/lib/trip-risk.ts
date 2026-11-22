@@ -9,16 +9,36 @@
  * minutos), se calcula un FACTOR DE PICO propio de la vivienda comparando el máximo medido
  * por el contador con la mayor media horaria de ese mismo día. Con ese factor se estima el
  * pico real de cada día y se compara con la potencia contratada (P1 en punta y llano, P2 en
- * valle). La probabilidad de que salte en un día crece de forma continua (curva logística)
- * según lo cerca que esté el pico estimado de la potencia contratada.
+ * valle).
+ *
+ * CURVA DEL LIMITADOR. El limitador integrado en los contadores inteligentes sigue la curva
+ * térmica de la norma UNE 20317 (ICP-M): cuanto mayor es el exceso, antes corta.
+ *   - hasta +10 % / +13 % de la potencia contratada: no corta (al menos 1 hora)
+ *   - +10 % sostenido: corta antes de 1 hora
+ *   - +20 % a +50 %: corta en minutos
+ *   - +50 %: entre ~30 segundos y ~3 minutos
+ *   - el doble: en segundos
+ * Por eso, un pico medio de 15 minutos igual a la potencia contratada casi nunca hace saltar
+ * el limitador: hace falta superarla con claridad de forma sostenida (≥ +10-15 % durante
+ * muchos minutos) o con picos fuertes (≥ +50 %) de medio minuto o más dentro de esos 15 min.
+ * La probabilidad diaria se modela con una curva logística sobre el pico de 15 minutos,
+ * centrada en +15 % (50 %), que da ≈5 % al 100 %, ≈27 % al +10 % y ≈88 % al +25 %.
  */
 
 import type { MaxPowerReading, Reading } from '@/lib/consumption';
 
-/** Pico estimado (en tanto por uno de la potencia contratada) con el que la probabilidad diaria es del 50 % */
-const CENTER = 1.0;
+/** Tabla orientativa de la curva de disparo (UNE 20317) para mostrar al usuario */
+export const TRIP_CURVE: { factor: number; label: string; time: string }[] = [
+  { factor: 1.1, label: '+10 %', time: 'No salta (o tarda más de 1 hora)' },
+  { factor: 1.2, label: '+20 %', time: 'Puede saltar en 10-15 minutos' },
+  { factor: 1.5, label: '+50 %', time: 'Salta en 30 segundos - 3 minutos' },
+  { factor: 2, label: 'el doble', time: 'Salta en segundos' },
+];
+
+/** Pico de 15 min (en tanto por uno de la potencia contratada) con el que la probabilidad diaria es del 50 % */
+const CENTER = 1.15;
 /** Anchura de la curva: cuanto menor, más brusco el paso de "seguro" a "salta" */
-const SCALE = 0.04;
+const SCALE = 0.05;
 /** Factor de pico por defecto si no hay potencias máximas con las que calibrar */
 export const DEFAULT_PEAK_FACTOR = 1.5;
 
@@ -58,7 +78,7 @@ export type TripRisk = {
   byMonth: { month: string; p: number; maxU: number; days: number }[];
   worstMonth: { month: string; p: number } | null;
   byHour: number[]; // probabilidad media diaria de que el pico peligroso sea a esa hora (0..1)
-  riskyDays: number; // días con pico estimado ≥ 90 % de lo contratado
+  riskyDays: number; // días con pico estimado por encima de lo contratado
   exceedances: MaxPowerReading[]; // veces que el contador midió más que lo contratado
   maxMeasured: MaxPowerReading | null;
   contracted: number[];
@@ -211,7 +231,7 @@ export function analyzeTripRisk(
     byMonth,
     worstMonth,
     byHour: hourAcc.map((v) => (days.length ? v / days.length : 0)),
-    riskyDays: days.filter((d) => d.u >= 0.9).length,
+    riskyDays: days.filter((d) => d.u >= 1).length,
     exceedances,
     maxMeasured,
     contracted,

@@ -10,7 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { normalize, normalizeMaxPower } from '@/lib/consumption';
 import { setJSON } from '@/lib/storage';
 import { fmtDate, fmtEur, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum, fmtPct, pad2, cap } from '@/lib/format';
-import { STANDARD_POWERS, analyzeTripRisk, riskLevel, whatIf, type DayRisk, type TripRisk } from '@/lib/trip-risk';
+import { STANDARD_POWERS, TRIP_CURVE, analyzeTripRisk, riskLevel, whatIf, type DayRisk, type TripRisk } from '@/lib/trip-risk';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -70,7 +70,7 @@ function levelColor(c: ReturnType<typeof useTheme>, p: number) {
 function headline(r: TripRisk): string {
   const p = r.pNext30;
   if (r.exceedances.length && p >= 0.2)
-    return `Tu contador ya ha registrado ${r.exceedances.length} ${r.exceedances.length === 1 ? 'pico' : 'picos'} por encima de tu potencia. Es probable que salte si coinciden varios aparatos potentes.`;
+    return `Tu contador ya ha registrado ${r.exceedances.length} ${r.exceedances.length === 1 ? 'pico' : 'picos'} de 15 minutos por encima de tu potencia. El limitador tolera excesos pequeños, pero si coinciden varios aparatos potentes es probable que salte.`;
   if (p < 0.05) return 'Es muy improbable que te salten los plomos con tu consumo habitual.';
   if (p < 0.2) return 'Es poco probable que salte, aunque podría ocurrir si enciendes a la vez muchos aparatos potentes.';
   if (p < 0.5) return 'Hay un riesgo real de que salte en momentos de mucho consumo. Evita usar a la vez horno, vitro, lavadora y calefacción.';
@@ -78,7 +78,7 @@ function headline(r: TripRisk): string {
 }
 
 const DISCLAIMER =
-  'Es una estimación. Datadis no informa de los cortes: se calcula a partir de tu curva de consumo y de los picos de 15 minutos que mide tu contador. El limitador reacciona a picos de segundos que no se ven en estos datos.';
+  'Es una estimación. Datadis no informa de los cortes: se calcula con tu curva de consumo, los picos de 15 minutos que mide tu contador y la curva de disparo del limitador (norma UNE 20317): por debajo de +10 % de tu potencia no salta, y cuanto mayor es el exceso, antes corta.';
 
 /** Tarjeta compacta para el Resumen */
 export function TripRiskSummaryCard({ supply, onOpen }: { supply: SupplyRef; onOpen: () => void }) {
@@ -159,7 +159,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
             color={risk.worstMonth ? levelColor(c, risk.worstMonth.p) : undefined}
             sub={risk.worstMonth ? cap(fmtMonthLong(risk.worstMonth.month)) : undefined}
           />
-          <Stat label="Días al límite" value={String(risk.riskyDays)} sub="pico estimado ≥ 90 % de tu potencia" color={risk.riskyDays ? c.warning : undefined} />
+          <Stat label="Días al límite" value={String(risk.riskyDays)} sub="pico estimado por encima de tu potencia" color={risk.riskyDays ? c.warning : undefined} />
           <Stat
             label="Picos por encima"
             value={String(risk.exceedances.length)}
@@ -168,6 +168,8 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
           />
         </Row>
       </Card>
+
+      <MarginCard risk={risk} />
 
       <Card title="¿Y si cambio la potencia?" info="Riesgo estimado de corte y coste anual del término de potencia (con tus precios de Ajustes, sin impuestos) para cada potencia. Se marca la menor potencia con la que el riesgo en tu peor mes queda por debajo del 5 %.">
         {current && recommended && recommended.kw !== current.kw ? (
@@ -244,7 +246,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
               {risk.contracted[1] ? ` y P2 (${fmtKW(risk.contracted[1], 2)}) en valle` : ''}.
             </T>
             <T variant="small" style={{ color: c.text }}>
-              4. Si el pico estimado llega al 100 % de la potencia, la probabilidad de corte ese día es del 50 %; al 95 %, de un 22 %; al 90 %, de un 8 %; al 85 %, de un 2 %. Ningún día puede superar el pico real que midió el contador ese mes.
+              4. El limitador sigue la curva de la norma UNE 20317: no corta con excesos de hasta un 10 %, y corta antes cuanto mayor es el exceso (en minutos con +20-50 %, en segundos con el doble). Por eso, la probabilidad de corte en un día es de un 5 % si el pico de 15 minutos iguala tu potencia, de un 27 % si la supera un 10 %, del 50 % si la supera un 15 % y de un 88 % si la supera un 25 %. Ningún día puede superar el pico real que midió el contador ese mes.
             </T>
             <T variant="small" style={{ color: c.text }}>
               5. Con la probabilidad de cada día se calcula la de que salte al menos una vez en 30 días.
@@ -270,5 +272,50 @@ function DayRow({ d }: { d: DayRisk }) {
         </View>
       }
     />
+  );
+}
+
+/** Margen del limitador con la potencia contratada del usuario (curva UNE 20317) */
+function MarginCard({ risk }: { risk: TripRisk }) {
+  const c = useTheme();
+  const p1 = risk.contracted[0];
+  const p2 = risk.contracted[1];
+  const maxM = risk.maxMeasured;
+  const colors = [c.p3, c.p2, '#EF7D2F', c.danger];
+  return (
+    <Card
+      title="¿Cuánto margen tienes?"
+      subtitle={`Con ${fmtKW(p1, 2)} contratados${p2 && p2 !== p1 ? ` (${fmtKW(p2, 2)} en valle)` : ''}`}
+      info="El limitador del contador no corta nada más pasar de tu potencia: sigue una curva (norma UNE 20317) que tolera excesos pequeños y corta antes cuanto mayor es el exceso. Los tiempos son orientativos: según el contador y las pruebas publicadas varían bastante.">
+      {TRIP_CURVE.map((t, i) => (
+        <View key={t.factor} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 6 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors[i] }} />
+          <View style={{ flex: 1 }}>
+            <T style={{ fontWeight: '700' }}>
+              {i === 0 ? 'Hasta ' : ''}
+              {fmtKW(p1 * t.factor, 2)} <T variant="small">({t.label})</T>
+            </T>
+            <T variant="small" style={{ color: c.text }}>
+              {t.time}
+            </T>
+          </View>
+        </View>
+      ))}
+      {maxM ? (
+        <Notice tone={maxM.kw > p1 * 1.1 ? 'warning' : 'info'}>
+          <T variant="small" style={{ color: c.text }}>
+            Tu mayor pico de 15 minutos medido fue de {fmtKW(maxM.kw, 2)} ({fmtNum((maxM.kw / p1) * 100, 0)} % de tu potencia) el {fmtDate(maxM.date)} a las {maxM.time}.
+            {maxM.kw > p1 * 1.1
+              ? ' Es una media de 15 minutos por encima del margen de tolerancia: es muy probable que saltara o estuviera a punto.'
+              : maxM.kw > p1
+                ? ' Superó tu potencia, pero dentro del margen de tolerancia.'
+                : ' Dentro de tu potencia contratada.'}
+          </T>
+        </Notice>
+      ) : null}
+      <T variant="small">
+        Consejo: los aparatos que más disparan picos son horno, vitrocerámica o inducción, termo eléctrico, lavadora y lavavajillas al calentar agua, secadora, aire acondicionado y la carga del coche eléctrico.
+      </T>
+    </Card>
   );
 }

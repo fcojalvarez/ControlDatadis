@@ -29,10 +29,10 @@ Datadis no informa de los cortes, así que se calcula así:
 1. De la curva horaria se toma la hora de más consumo de cada día.
 2. Tu contador mide el pico real de 15 minutos de cada mes. Comparándolo con la media horaria de ese día se obtiene tu **factor de pico** (cuánto más altos son tus picos que la media horaria).
 3. Pico estimado del día = media horaria × factor, sin superar el pico medido ese mes. Se compara con tu potencia contratada (P1 en punta/llano, P2 en valle).
-4. Probabilidad diaria con una curva logística: 50 % si el pico estimado llega al 100 % de la potencia, ~22 % al 95 %, ~8 % al 90 %, ~2 % al 85 %.
+4. El limitador sigue la curva de disparo de la norma **UNE 20317** (ICP-M): hasta +10 % de la potencia no corta (al menos 1 hora); con +20-50 % corta en minutos; con +50 %, en 30 s - 3 min; con el doble, en segundos (datos de la norma y de pruebas publicadas, p. ej. [redmilenium/UNE-20317](https://github.com/redmilenium/UNE-20317)). Por eso la probabilidad diaria se modela con una curva logística sobre el pico de 15 minutos: ~5 % si iguala tu potencia, ~27 % a +10 %, 50 % a +15 %, ~88 % a +25 %.
 5. Se combinan los días para obtener la probabilidad de al menos un corte en 30 días (usando los últimos 30 días y el mismo periodo del año anterior).
 
-También muestra el riesgo por mes y por hora, los días más cerca del límite y una tabla **"¿y si cambio la potencia?"** con el riesgo y el coste anual de cada potencia, y la recomendada.
+También muestra tu **margen** concreto (a cuántos kW no salta, en minutos o en segundos), el riesgo por mes y por hora, los días más cerca del límite y una tabla **"¿y si cambio la potencia?"** con el riesgo y el coste anual de cada potencia, y la recomendada.
 
 
 - **Inicio**: suministros activos y anteriores con comercializadora, potencia y tarifa de un vistazo.
