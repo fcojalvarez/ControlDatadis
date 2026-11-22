@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { DatadisClient, login as apiLogin } from '@/api/datadis';
 import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
-import { cacheClear, clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
+import { clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
 
 type Status = 'loading' | 'loggedOut' | 'loggedIn';
 
@@ -89,7 +89,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     auth.token = null;
     auth.creds = null;
-    await Promise.all([clearCredentials(), cacheClear()]);
+    // Los datos descargados se conservan en el móvil (se borran desde Ajustes si se quiere)
+    await clearCredentials();
     setUsername(null);
     setSettings((s) => ({ ...s, activeNif: null }));
     setStatus('loggedOut');

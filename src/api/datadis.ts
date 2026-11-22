@@ -15,7 +15,7 @@
  */
 
 export const DATADIS_BASE_URL = 'https://datadis.es';
-const REQUEST_TIMEOUT_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 90_000;
 
 // ---------- Tipos de respuesta ----------
 
@@ -162,7 +162,24 @@ export function toYearMonth(d: Date): string {
 
 // ---------- Cliente ----------
 
+/** Inicio de sesión con reintentos ante fallos de red o del servidor (no ante credenciales erróneas) */
 export async function login(username: string, password: string): Promise<string> {
+  let lastError: unknown = null;
+  for (const wait of [0, 3_000, 8_000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await loginOnce(username, password);
+    } catch (e) {
+      lastError = e;
+      if (e instanceof AuthError) throw e;
+      const status = e instanceof DatadisError ? e.status : 0;
+      if (status !== 0 && status < 500) throw e;
+    }
+  }
+  throw lastError;
+}
+
+async function loginOnce(username: string, password: string): Promise<string> {
   const body = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
   const res = await fetchWithTimeout(`${DATADIS_BASE_URL}/nikola-auth/tokens/login`, {
     method: 'POST',
@@ -194,7 +211,50 @@ export class DatadisClient {
     private refreshToken: () => Promise<string>,
   ) {}
 
-  private async get<T>(path: string, params: Params = {}, retry = true): Promise<T> {
+  /*
+   * GET con reintentos: Datadis falla a menudo (timeouts, 5xx, cortes de red), así que se
+   * reintenta hasta 3 veces con esperas crecientes. No se reintenta un 429 (límite de consultas)
+   * ni los errores 4xx, que no se arreglan repitiendo.
+   */
+  /** Peticiones en curso (las idénticas se comparten) */
+  private inflight = new Map<string, Promise<unknown>>();
+  /** Si Datadis está caído, no se le vuelve a preguntar hasta esta hora */
+  private downUntil = 0;
+
+  private get<T>(path: string, params: Params = {}): Promise<T> {
+    const id = `${path}${buildQuery(params)}`;
+    const running = this.inflight.get(id);
+    if (running) return running as Promise<T>;
+    const p = this.getWithRetries<T>(path, params).finally(() => this.inflight.delete(id));
+    this.inflight.set(id, p);
+    return p;
+  }
+
+  private async getWithRetries<T>(path: string, params: Params): Promise<T> {
+    if (Date.now() < this.downUntil) {
+      throw new DatadisError('Datadis no responde. Se volverá a intentar en unos minutos.');
+    }
+    const delays = [0, 3_000, 10_000];
+    let lastError: unknown = null;
+    for (const wait of delays) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      try {
+        const res = await this.getOnce<T>(path, params, true);
+        this.downUntil = 0;
+        return res;
+      } catch (e) {
+        lastError = e;
+        const status = e instanceof DatadisError ? e.status : 0;
+        const retryable = status === 0 || status >= 500;
+        if (!retryable) throw e;
+      }
+    }
+    // Tras varios fallos seguidos, pausa de 2 minutos para no saturar ni esperar en vano
+    this.downUntil = Date.now() + 2 * 60_000;
+    throw lastError;
+  }
+
+  private async getOnce<T>(path: string, params: Params, retryAuth: boolean): Promise<T> {
     const token = this.getToken() ?? (await this.refreshToken());
     const url = `${DATADIS_BASE_URL}${path}${buildQuery(params)}`;
     const res = await fetchWithTimeout(url, {
@@ -205,9 +265,9 @@ export class DatadisClient {
         'Accept-Encoding': 'identity',
       },
     });
-    if (res.status === 401 && retry) {
+    if (res.status === 401 && retryAuth) {
       await this.refreshToken();
-      return this.get<T>(path, params, false);
+      return this.getOnce<T>(path, params, false);
     }
     const text = await res.text();
     if (!res.ok) {

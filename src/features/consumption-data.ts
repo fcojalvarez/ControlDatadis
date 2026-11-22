@@ -58,6 +58,7 @@ type State = {
   error: string | null;
   errors: DistributorError[];
   updatedAt: number | null;
+  stale: boolean; // se muestran datos guardados porque la actualización falló o vino vacía
 };
 
 /** Agrupa meses en tramos consecutivos */
@@ -82,7 +83,7 @@ export function useConsumptionMonths(supply: SupplyRef, months: MonthKey[], meas
   const nif = settings.activeNif ?? undefined;
   const prefix = `consm:${username}:${nif ?? 'me'}:${supply.cups}:${measurementType}:`;
   const monthsKey = months.join(',');
-  const [state, setState] = useState<State>({ months: {}, loading: true, error: null, errors: [], updatedAt: null });
+  const [state, setState] = useState<State>({ months: {}, loading: true, error: null, errors: [], updatedAt: null, stale: false });
   const runId = useRef(0);
 
   const load = useCallback(
@@ -104,11 +105,12 @@ export function useConsumptionMonths(supply: SupplyRef, months: MonthKey[], meas
         }
       }
       if (id !== runId.current) return;
-      setState({ months: found, loading: missing.length > 0, error: null, errors: [], updatedAt: oldest });
+      setState({ months: found, loading: missing.length > 0, error: null, errors: [], updatedAt: oldest, stale: false });
       if (!missing.length) return;
 
       const errors: DistributorError[] = [];
       let error: string | null = null;
+      let keptSaved = false;
       for (const run of contiguousRuns(missing)) {
         try {
           const r = await fetchRanged(monthDate(run[0]), monthDate(run[run.length - 1]), (s, e) =>
@@ -128,18 +130,39 @@ export function useConsumptionMonths(supply: SupplyRef, months: MonthKey[], meas
             const k = row[0].slice(0, 7).replace('/', '-');
             (byMonth[k] ??= []).push(row);
           }
+          let partial = false;
           for (const k of run) {
+            // Meses que Datadis no llegó a devolver: no se guardan (se reintentarán)
+            if (!r.okMonths.has(k.replace('-', '/'))) {
+              partial = true;
+              continue;
+            }
+            // Si Datadis devuelve un mes vacío pero ya lo teníamos guardado con datos, se conserva
+            if (!byMonth[k].length && found[k]?.length) {
+              keptSaved = true;
+              continue;
+            }
             await cacheSet<MonthEntry>(prefix + k, { rows: byMonth[k] });
             found[k] = byMonth[k];
           }
+          if (partial) error = 'Datadis no devolvió algunos meses. Se reintentarán más tarde.';
         } catch (e) {
           error = e instanceof Error ? e.message : String(e);
+          // Datadis no responde: no se insiste con el resto de meses (se reintentará más tarde)
+          break;
         }
         if (id !== runId.current) return;
         setState((s) => ({ ...s, months: { ...found } }));
       }
       if (id !== runId.current) return;
-      setState({ months: { ...found }, loading: false, error, errors, updatedAt: Date.now() });
+      setState({
+        months: { ...found },
+        loading: false,
+        error,
+        errors,
+        updatedAt: error ? oldest : Date.now(),
+        stale: keptSaved || (!!error && Object.values(found).some((rows) => rows.length > 0)),
+      });
     },
     [monthsKey, prefix, client, supply.cups, supply.distributorCode, supply.pointType, measurementType, nif],
   );
@@ -149,5 +172,7 @@ export function useConsumptionMonths(supply: SupplyRef, months: MonthKey[], meas
   }, [load]);
 
   const refresh = useCallback(() => load(true), [load]);
-  return { ...state, refresh };
+  /** Vuelve a intentar solo los meses que faltan o están caducados */
+  const retry = useCallback(() => load(false), [load]);
+  return { ...state, refresh, retry };
 }

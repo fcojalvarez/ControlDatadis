@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { View } from 'react-native';
 
 import { BarChart, ProgressBar, SplitBar } from '@/components/bar-chart';
-import { Card, Delta, ErrorBox, InlineLoading, KeyValue, Loading, Notice, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
+import { Card, Delta, SavedDataNotice, InlineLoading, KeyValue, Loading, Notice, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,6 +13,7 @@ import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
 import { useContract, useMaxPower } from './queries';
+import { OfflineDataCard } from './offline-data';
 import { TripRiskSummaryCard } from './trip-risk';
 import { rangeMonths, type SupplyRef } from './types';
 
@@ -66,7 +67,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
         <Loading text="Preparando tu resumen… La primera vez se descarga el último año de consumo y puede tardar hasta un minuto." />
       ) : null}
       {q.loading && (yearS.total > 0 || curS.total > 0) ? <InlineLoading text="Actualizando con Datadis…" /> : null}
-      {q.error && !yearS.total ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
+      <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {nothing && !q.error ? <Notice tone="warning">Datadis todavía no tiene datos de consumo para este suministro.</Notice> : null}
 
       <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />
@@ -192,6 +193,8 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
           ))}
         </Card>
       )}
+
+      <OfflineDataCard supply={supply} />
 
       <UpdatedAt ts={q.updatedAt} loading={q.loading} />
     </Screen>

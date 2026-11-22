@@ -3,61 +3,85 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cacheGet, cacheSet } from '@/lib/storage';
 
 type State<T> = {
+  key: string | null; // consulta a la que pertenecen estos datos
   data: T | null;
   error: string | null;
   loading: boolean;
-  updatedAt: number | null;
+  updatedAt: number | null; // cuándo se descargaron los datos que se muestran
+  /** Se están mostrando datos guardados porque la actualización falló o vino vacía */
+  stale: boolean;
+};
+
+type Options<T> = {
+  /** Si la respuesta nueva está vacía y ya había datos guardados, se conservan los guardados */
+  isEmpty?: (d: T) => boolean;
 };
 
 /**
- * Consulta con caché persistente. Si hay datos en caché más recientes que `ttlMs`
- * no se consulta Datadis (evita los límites de peticiones).
+ * Consulta con almacenamiento local persistente ("offline first"):
+ *  - Siempre se muestran primero los datos guardados en el móvil, aunque sean antiguos.
+ *  - Solo se consulta Datadis si los datos guardados tienen más de `ttlMs` (o al forzar).
+ *  - Si Datadis falla o devuelve una respuesta vacía, se mantienen los datos guardados.
  * `key = null` desactiva la consulta.
  */
-export function useCachedQuery<T>(key: string | null, fetcher: () => Promise<T>, ttlMs: number) {
-  const [state, setState] = useState<State<T>>({ data: null, error: null, loading: !!key, updatedAt: null });
+export function useCachedQuery<T>(key: string | null, fetcher: () => Promise<T>, ttlMs: number, options: Options<T> = {}) {
+  const [state, setState] = useState<State<T>>({ key, data: null, error: null, loading: !!key, updatedAt: null, stale: false });
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  const isEmptyRef = useRef(options.isEmpty);
   const currentKey = useRef(key);
-  currentKey.current = key;
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+    isEmptyRef.current = options.isEmpty;
+    currentKey.current = key;
+  });
 
   const run = useCallback(
     async (force: boolean) => {
       if (!key) return;
-      setState((s) => ({ ...s, loading: true, error: null }));
+      currentKey.current = key;
+      const cached = await cacheGet<T>(key);
+      if (currentKey.current !== key) return;
+      if (cached) {
+        const fresh = Date.now() - cached.ts <= ttlMs;
+        setState({ key, data: cached.data, error: null, loading: force || !fresh, updatedAt: cached.ts, stale: false });
+        if (fresh && !force) return;
+      } else {
+        setState((s) => (s.key === key ? { ...s, loading: true, error: null } : { key, data: null, error: null, loading: true, updatedAt: null, stale: false }));
+      }
       try {
-        if (!force) {
-          const cached = await cacheGet<T>(key);
-          if (cached) {
-            if (currentKey.current !== key) return;
-            setState({ data: cached.data, error: null, loading: Date.now() - cached.ts > ttlMs, updatedAt: cached.ts });
-            if (Date.now() - cached.ts <= ttlMs) return;
-          }
-        }
         const data = await fetcherRef.current();
-        await cacheSet(key, data);
         if (currentKey.current !== key) return;
-        setState({ data, error: null, loading: false, updatedAt: Date.now() });
+        const empty = isEmptyRef.current?.(data) ?? false;
+        if (empty && cached && !(isEmptyRef.current?.(cached.data) ?? false)) {
+          // Datadis devolvió vacío pero teníamos datos: no se pierden
+          setState({ key, data: cached.data, error: null, loading: false, updatedAt: cached.ts, stale: true });
+          return;
+        }
+        await cacheSet(key, data);
+        setState({ key, data, error: null, loading: false, updatedAt: Date.now(), stale: false });
       } catch (e) {
         if (currentKey.current !== key) return;
-        setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : String(e) }));
+        const msg = e instanceof Error ? e.message : String(e);
+        setState((s) => ({ ...s, loading: false, error: msg, stale: s.data !== null }));
       }
     },
     [key, ttlMs],
   );
 
   useEffect(() => {
-    if (!key) {
-      setState({ data: null, error: null, loading: false, updatedAt: null });
-      return;
-    }
-    setState({ data: null, error: null, loading: true, updatedAt: null });
-    run(false);
-  }, [key, run]);
+    // Todas las actualizaciones de estado ocurren de forma asíncrona (tras leer los datos guardados)
+    void Promise.resolve().then(() => run(false));
+  }, [run]);
 
-  const refresh = useCallback(() => run(true), [run]);
+  const refresh = useCallback(() => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    return run(true);
+  }, [run]);
 
-  return { ...state, refresh };
+  // Mientras llegan los datos de una consulta nueva no se muestran los de la anterior
+  const current: State<T> =
+    state.key === key ? state : { key, data: null, error: null, loading: !!key, updatedAt: null, stale: false };
+  return { data: current.data, error: current.error, loading: current.loading, updatedAt: current.updatedAt, stale: current.stale, refresh };
 }
 
 export const HOUR = 3_600_000;

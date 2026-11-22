@@ -15,7 +15,7 @@ import {
   Delta,
   Disclosure,
   Empty,
-  ErrorBox,
+  SavedDataNotice,
   InlineLoading,
   KeyValue,
   Loading,
@@ -212,8 +212,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
       </Card>
 
       {loadingFirst ? <Loading text="Descargando tu consumo de Datadis… La primera vez puede tardar hasta un minuto." /> : null}
-      {q.error && readings.length === 0 ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
-      {q.error && readings.length > 0 ? <Notice tone="warning">{`Algunos meses no se pudieron descargar: ${q.error}`}</Notice> : null}
+      <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
 
       {!q.loading && !q.error && readings.length === 0 ? (
         <Empty

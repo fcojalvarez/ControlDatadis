@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { DistributorError, Supply } from '@/api/datadis';
-import { Card, Chips, Empty, ErrorBox, Loading, Notice, SectionTitle, T, UpdatedAt, Screen } from '@/components/ui';
+import { Card, Chips, Empty, Loading, Notice, SavedDataNotice, SectionTitle, T, UpdatedAt, Screen } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useContract } from '@/features/queries';
@@ -31,6 +31,7 @@ export default function SuppliesScreen() {
     `supplies:${username}:${nif ?? 'me'}`,
     () => client.getSupplies(nif),
     DAY,
+    { isEmpty: (d) => !d.supplies.length },
   );
 
   const nifOptions = [{ value: '', label: 'Mis suministros' }, ...settings.authorizedNifs.map((n) => ({ value: n, label: n }))];
@@ -62,7 +63,7 @@ export default function SuppliesScreen() {
         )}
 
         {q.loading && !q.data ? <Loading text="Buscando tus suministros en Datadis…" /> : null}
-        {q.error ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
+        <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
 
         {q.data && supplies.length === 0 ? (
           <Empty text="No hay suministros asociados a esta cuenta en Datadis. Si acabas de registrarte, las distribuidoras pueden tardar unos días en asociarlos." />

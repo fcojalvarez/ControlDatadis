@@ -19,6 +19,7 @@ export function useContract(supply: Pick<SupplyRef, 'cups' | 'distributorCode'>)
     `contract:${username}:${nif ?? 'me'}:${supply.cups}`,
     () => client.getContractDetail(supply.cups, supply.distributorCode, nif),
     DAY,
+    { isEmpty: (d) => !d.contracts.length },
   );
 }
 
@@ -31,8 +32,9 @@ export async function fetchRanged<T>(
   start: Date,
   end: Date,
   fetchChunk: (s: string, e: string) => Promise<{ rows: T[]; errors: DistributorError[] }>,
-): Promise<{ rows: T[]; errors: DistributorError[] }> {
+): Promise<{ rows: T[]; errors: DistributorError[]; okMonths: Set<string> }> {
   const months = monthsBetween(start, end);
+  const okMonths = new Set<string>(); // meses (YYYY/MM) que Datadis respondió correctamente
   const chunks: Date[][] = [];
   for (let i = 0; i < months.length; i += 12) chunks.push(months.slice(i, i + 12));
 
@@ -49,25 +51,32 @@ export async function fetchRanged<T>(
       if (r.rows.length || chunk.length === 1) {
         rows.push(...r.rows);
         ok = true;
+        chunk.forEach((m) => okMonths.add(toYearMonth(m)));
       }
     } catch (err) {
       lastError = err;
       if (chunk.length === 1) continue;
     }
     if (!ok && chunk.length > 1) {
+      // Mes a mes; si fallan dos seguidos, Datadis está caído: se deja para más tarde
+      let consecutiveFailures = 0;
       for (const m of chunk) {
         try {
           const r = await fetchChunk(toYearMonth(m), toYearMonth(m));
           rows.push(...r.rows);
           errors.push(...r.errors);
+          okMonths.add(toYearMonth(m));
+          consecutiveFailures = 0;
         } catch (err) {
           lastError = err;
+          if (++consecutiveFailures >= 2) break;
         }
       }
+      if (consecutiveFailures >= 2) break;
     }
   }
   if (!rows.length && lastError) throw lastError;
-  return { rows, errors };
+  return { rows, errors, okMonths };
 }
 
 export function useMaxPower(supply: SupplyRef, start: Date, end: Date) {
@@ -86,6 +95,7 @@ export function useMaxPower(supply: SupplyRef, start: Date, end: Date) {
         }),
       ),
     ttlFor(end),
+    { isEmpty: (d) => !d.rows.length },
   );
 }
 
@@ -103,5 +113,6 @@ export function useReactive(supply: SupplyRef, start: Date, end: Date) {
         authorizedNif: nif,
       }),
     ttlFor(end),
+    { isEmpty: (d) => !d.rows.length },
   );
 }

@@ -1,5 +1,5 @@
 import type { ContractDetail } from '@/api/datadis';
-import { Card, Empty, ErrorBox, KeyValue, Loading, Notice, Screen, T, UpdatedAt } from '@/components/ui';
+import { Card, Empty, SavedDataNotice, KeyValue, Loading, Notice, Screen, T, UpdatedAt } from '@/components/ui';
 import { fmtDate, fmtNum } from '@/lib/format';
 
 import { useContract } from './queries';
@@ -24,7 +24,7 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
       </Card>
 
       {q.loading && !q.data ? <Loading /> : null}
-      {q.error ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
+      <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {q.data && contracts.length === 0 ? <Empty text="La distribuidora no ha devuelto datos de contrato." /> : null}
 
       {current && <ContractCards ct={current} title="Contrato actual" />}

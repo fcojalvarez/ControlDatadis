@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { BarChart, ProgressBar } from '@/components/bar-chart';
-import { Card, Chips, DataTable, Disclosure, Empty, ErrorBox, KeyValue, Loading, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
+import { Card, Chips, DataTable, Disclosure, Empty, SavedDataNotice, KeyValue, Loading, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeMaxPower, type MaxPowerReading } from '@/lib/consumption';
 import { fmtDate, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
@@ -60,7 +60,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
         <Chips options={OPTIONS} value={range} onChange={setRange} />
       </Card>
       {q.loading && !q.data ? <Loading /> : null}
-      {q.error ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
+      <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {q.data && rows.length === 0 ? <Empty text="La distribuidora no ha publicado potencias máximas para este periodo." /> : null}
 
       {rows.length > 0 && (

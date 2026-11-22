@@ -6,7 +6,8 @@ import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
-import { cacheClear } from '@/lib/storage';
+import { fmtNum } from '@/lib/format';
+import { cacheClear, cacheStats } from '@/lib/storage';
 
 function NumField({
   label,
@@ -47,6 +48,7 @@ export default function SettingsScreen() {
   const [prices, setPrices] = useState<Prices>(settings.prices);
   const [newNif, setNewNif] = useState('');
   const [formKey, setFormKey] = useState(0);
+  const [stats, setStats] = useState(() => cacheStats());
 
   const setP = (patch: Partial<Prices>) => {
     const next = { ...prices, ...patch };
@@ -75,7 +77,7 @@ export default function SettingsScreen() {
           title="Cerrar sesión"
           variant="danger"
           onPress={() =>
-            Alert.alert('Cerrar sesión', 'Se borrarán las credenciales y los datos guardados en este dispositivo.', [
+            Alert.alert('Cerrar sesión', 'Se borrará tu contraseña de este dispositivo. Los datos descargados se conservan; puedes borrarlos abajo en «Datos guardados».', [
               { text: 'Cancelar', style: 'cancel' },
               { text: 'Cerrar sesión', style: 'destructive', onPress: signOut },
             ])
@@ -145,19 +147,29 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card title="Datos">
+      <Card title="Datos guardados">
         <T variant="small">
-          Las respuestas de Datadis se guardan en el dispositivo para no superar los límites de consultas: los meses
-          cerrados se guardan 30 días y el mes en curso 6 horas. Desliza hacia abajo en cualquier pantalla para forzar
-          una actualización.
+          Todo lo que se descarga de Datadis se guarda en el móvil y no se borra nunca automáticamente: si Datadis falla o va
+          lento, la app sigue mostrando los datos guardados. Los meses cerrados se vuelven a consultar como mucho una vez al
+          mes y el mes en curso cada 6 horas. Desliza hacia abajo en cualquier pantalla para forzar una actualización.
         </T>
+        <KeyValue k="Datos guardados" v={stats.files ? `${stats.files} archivos · ${fmtNum(stats.bytes / 1024 / 1024, 1)} MB` : 'Ninguno todavía'} />
         <Button
           title="Borrar datos guardados"
-          variant="secondary"
-          onPress={async () => {
-            await cacheClear();
-            Alert.alert('Listo', 'Se han borrado los datos guardados.');
-          }}
+          variant="danger"
+          onPress={() =>
+            Alert.alert('Borrar datos guardados', 'Se borrará todo lo descargado de Datadis. Tendrás que volver a descargarlo, y si Datadis no responde no verás datos.', [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'Borrar',
+                style: 'destructive',
+                onPress: async () => {
+                  await cacheClear();
+                  setStats(cacheStats());
+                },
+              },
+            ])
+          }
         />
       </Card>
 

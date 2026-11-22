@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 import type { ReactiveRow } from '@/api/datadis';
 import { BarChart } from '@/components/bar-chart';
-import { Card, Chips, DataTable, ErrorBox, InlineLoading, Notice } from '@/components/ui';
+import { Card, Chips, DataTable, SavedDataNotice, InlineLoading, Notice } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 
@@ -46,7 +46,7 @@ export function ReactiveSection({ supply }: { supply: SupplyRef }) {
         <Chips options={OPTIONS} value={range} onChange={setRange} />
       </Card>
       {q.loading && !q.data ? <InlineLoading text="Consultando energía reactiva…" /> : null}
-      {q.error ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
+      <SavedDataNotice hasData={!!q.data} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {q.data && rows.length === 0 ? (
         <Notice>{q.data.codeDesc ? `Sin datos de energía reactiva: ${q.data.codeDesc}` : 'La distribuidora no publica energía reactiva para este suministro. Es lo normal en una vivienda.'}</Notice>
       ) : null}

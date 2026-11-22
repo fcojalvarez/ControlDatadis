@@ -519,6 +519,39 @@ export function LegendItem({ color, label, style }: { color: string; label: stri
   );
 }
 
+/**
+ * Aviso cuando Datadis falla pero hay datos guardados en el móvil: se muestran esos datos.
+ * Si no hay datos guardados, se muestra el error con el botón de reintentar.
+ */
+export function SavedDataNotice({
+  hasData,
+  error,
+  stale,
+  ts,
+  onRetry,
+}: {
+  hasData: boolean;
+  error: string | null;
+  stale?: boolean;
+  ts: number | null;
+  onRetry?: () => void;
+}) {
+  const c = useTheme();
+  if (!hasData) return error ? <ErrorBox message={error} onRetry={onRetry} /> : null;
+  if (!error && !stale) return null;
+  const when = ts
+    ? `${new Date(ts).toLocaleDateString('es-ES')} a las ${new Date(ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+    : null;
+  return (
+    <Notice tone="warning">
+      <T style={{ fontWeight: '700' }}>{error ? 'Datadis no responde ahora mismo' : 'Datadis devolvió datos vacíos'}</T>
+      <T variant="small" style={{ color: c.text }}>
+        Te mostramos los datos guardados en el móvil{when ? ` (descargados el ${when})` : ''}. Se volverá a intentar más tarde, o desliza hacia abajo para reintentar.
+      </T>
+    </Notice>
+  );
+}
+
 export function UpdatedAt({ ts, loading }: { ts: number | null; loading?: boolean }) {
   if (loading && ts) return <T variant="small">Actualizando…</T>;
   if (!ts) return null;
