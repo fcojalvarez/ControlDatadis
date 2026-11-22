@@ -13,6 +13,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -104,12 +106,8 @@ export function Card({
           </View>
           {right}
           {info ? (
-            <Pressable
-              onPress={() => setShowInfo((v) => !v)}
-              hitSlop={10}
-              accessibilityLabel="Más información"
-              style={[styles.infoBtn, { borderColor: showInfo ? c.tint : c.border, backgroundColor: showInfo ? c.tint : 'transparent' }]}>
-              <T style={{ fontSize: 13, fontWeight: '800', color: showInfo ? c.tintText : c.textSecondary }}>?</T>
+            <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={10} accessibilityLabel="Más información">
+              <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
             </Pressable>
           ) : null}
         </View>
@@ -601,3 +599,23 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot: { width: 12, height: 12, borderRadius: 3 },
 });
+
+/** Icono ⓘ que despliega una explicación al tocarlo (para no ocupar espacio con texto) */
+export function InfoToggle({ text, size = 20 }: { text: string; size?: number }) {
+  const c = useTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <View>
+      <Pressable onPress={() => setOpen((v) => !v)} hitSlop={10} accessibilityLabel="Más información" style={{ alignSelf: 'center' }}>
+        <Ionicons name={open ? 'information-circle' : 'information-circle-outline'} size={size} color={open ? c.tint : c.textSecondary} />
+      </Pressable>
+      {open ? (
+        <View style={[styles.infoBox, { backgroundColor: c.backgroundElement, marginTop: 6 }]}>
+          <T variant="small" style={{ color: c.text }}>
+            {text}
+          </T>
+        </View>
+      ) : null}
+    </View>
+  );
+}
