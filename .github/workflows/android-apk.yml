@@ -1,0 +1,80 @@
+# Compila el APK de Android y lo publica como Release del repositorio.
+# Se ejecuta en cada push a las ramas indicadas o a mano desde la pestaña Actions.
+name: APK Android
+
+on:
+  push:
+    branches: [main, master, ccr-525c1a3c-c16l5s]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobar tipos y lint
+        run: |
+          npx tsc --noEmit
+          npx eslint src
+
+      - name: Generar proyecto Android
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: 1
+
+      - name: Compilar APK (release)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Preparar APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          NAME="ControlDatadis-${VERSION}-build${{ github.run_number }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ steps.apk.outputs.version }}-build${{ github.run_number }}
+          name: Control Datadis ${{ steps.apk.outputs.version }} (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: ${{ steps.apk.outputs.name }}
+          body: |
+            APK para Android generado automáticamente desde `${{ github.sha }}`.
+
+            **Cómo instalarlo:** descarga el archivo `.apk` desde el móvil, ábrelo y acepta instalar apps de origen desconocido si te lo pide.
+            Las nuevas versiones se instalan encima sin perder los datos guardados.
