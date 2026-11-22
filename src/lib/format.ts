@@ -68,6 +68,14 @@ export function fmtDayShort(key: string): string {
   return `${Number(m[2])}/${Number(m[1])}`;
 }
 
+/** Probabilidad (0..1) como porcentaje legible: '<1 %', '12 %', '>99 %' */
+export function fmtPct(p: number): string {
+  if (!Number.isFinite(p) || p <= 0) return '0 %';
+  if (p < 0.01) return '<1 %';
+  if (p > 0.99 && p < 1) return '>99 %';
+  return `${Math.round(p * 100)} %`;
+}
+
 export function cap(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }

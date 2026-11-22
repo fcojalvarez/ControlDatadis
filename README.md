@@ -20,6 +20,21 @@ Todo lo que ofrece la API gratuita de Datadis:
 
 ## Pantallas
 
+### ¿Me saltarán los plomos?
+
+La app estima la **probabilidad de que salte el limitador de potencia (ICP)** en los próximos 30 días, en un mes típico y en tu peor mes. Aparece en el Resumen, en la pestaña Potencia y en la tarjeta del suministro.
+
+Datadis no informa de los cortes, así que se calcula así:
+
+1. De la curva horaria se toma la hora de más consumo de cada día.
+2. Tu contador mide el pico real de 15 minutos de cada mes. Comparándolo con la media horaria de ese día se obtiene tu **factor de pico** (cuánto más altos son tus picos que la media horaria).
+3. Pico estimado del día = media horaria × factor, sin superar el pico medido ese mes. Se compara con tu potencia contratada (P1 en punta/llano, P2 en valle).
+4. Probabilidad diaria con una curva logística: 50 % si el pico estimado llega al 100 % de la potencia, ~22 % al 95 %, ~8 % al 90 %, ~2 % al 85 %.
+5. Se combinan los días para obtener la probabilidad de al menos un corte en 30 días (usando los últimos 30 días y el mismo periodo del año anterior).
+
+También muestra el riesgo por mes y por hora, los días más cerca del límite y una tabla **"¿y si cambio la potencia?"** con el riesgo y el coste anual de cada potencia, y la recomendada.
+
+
 - **Inicio**: suministros activos y anteriores con comercializadora, potencia y tarifa de un vistazo.
 - **Resumen** de cada suministro: este mes (con comparación con los mismos días del mes anterior y previsión), mes pasado (vs. mismo mes del año anterior, coste y reparto por periodos), último año mes a mes, potencia usada frente a contratada, contrato y **consejos de ahorro** automáticos.
 - **Consumo**: navegación por **mes / año / últimos 12 meses** con flechas ‹ ›, datos horarios o cada 15 minutos, comparativas con el periodo anterior y:

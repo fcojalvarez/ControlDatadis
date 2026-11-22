@@ -71,7 +71,7 @@ export function BarChart({
   const y = (v: number) => TOP + plotH - (v / maxVal) * plotH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * maxVal);
   const tickStep = maxVal / 4;
-  const tickDigits = Number.isInteger(tickStep) ? 0 : Number.isInteger(tickStep * 10) ? 1 : 2;
+  const tickDigits = Number.isInteger(tickStep) ? 0 : Math.min(3, Math.max(1, Math.ceil(-Math.log10(tickStep)) + (Number.isInteger(tickStep * 10 ** Math.ceil(-Math.log10(tickStep))) ? 0 : 1)));
 
   const sel = selected !== null && selected < data.length ? selected : null;
   const selDatum = sel !== null ? data[sel] : null;

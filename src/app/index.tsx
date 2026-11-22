@@ -1,5 +1,6 @@
-import { Link, router } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { Stack } from 'expo-router/stack';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { DistributorError, Supply } from '@/api/datadis';
@@ -10,7 +11,10 @@ import { useContract } from '@/features/queries';
 import { POINT_TYPES } from '@/features/types';
 import { DAY, useCachedQuery } from '@/hooks/use-cached-query';
 import { useTheme } from '@/hooks/use-theme';
-import { fmtDate, fmtNum } from '@/lib/format';
+import { fmtDate, fmtNum, fmtPct } from '@/lib/format';
+import { getJSON } from '@/lib/storage';
+import { riskLevel } from '@/lib/trip-risk';
+import { riskStorageKey } from '@/features/trip-risk';
 
 function isActive(s: Supply) {
   if (!s.validDateTo) return true;
@@ -128,6 +132,7 @@ function SupplyCard({ s, active }: { s: Supply; active: boolean }) {
         </View>
 
         {active && <ContractLine s={s} />}
+        {active && <RiskLine cups={s.cups} />}
 
         <View style={[styles.meta, { borderTopColor: c.border }]}>
           <Meta label="CUPS" value={s.cups} mono />
@@ -161,6 +166,29 @@ function ContractLine({ s }: { s: Supply }) {
         <T style={{ fontWeight: '600' }}>{kw.length ? `${[...new Set(kw)].map((k) => fmtNum(k, 2)).join(' / ')} kW` : '—'}</T>
         {ct.accessFare ? <T variant="small">{ct.accessFare}</T> : null}
       </View>
+    </View>
+  );
+}
+
+/** Último riesgo de corte calculado (se calcula al abrir el suministro) */
+function RiskLine({ cups }: { cups: string }) {
+  const c = useTheme();
+  const { username } = useSession();
+  const [p, setP] = useState<number | null>(null);
+  // Se relee al volver a esta pantalla (el riesgo se calcula al abrir el suministro)
+  useFocusEffect(
+    useCallback(() => {
+      getJSON<{ p: number | null }>(riskStorageKey(username, cups), { p: null }).then((v) => setP(v.p));
+    }, [username, cups]),
+  );
+  if (p === null) return null;
+  const color = p < 0.05 ? c.p3 : p < 0.2 ? '#7CB342' : p < 0.5 ? c.p2 : p < 0.8 ? '#EF7D2F' : c.danger;
+  return (
+    <View style={[styles.contract, { backgroundColor: c.backgroundElement, alignItems: 'center' }]}>
+      <T style={{ flex: 1, fontWeight: '600' }}>Riesgo de que salten los plomos (30 días)</T>
+      <T style={{ fontWeight: '800', color, fontSize: 18 }}>
+        {fmtPct(p)} · {riskLevel(p).label.toLowerCase()}
+      </T>
     </View>
   );
 }

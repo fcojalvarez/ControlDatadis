@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { BarChart, ProgressBar } from '@/components/bar-chart';
-import { Card, Chips, DataTable, Disclosure, Empty, ErrorBox, KeyValue, Loading, Notice, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
+import { Card, Chips, DataTable, Disclosure, Empty, ErrorBox, KeyValue, Loading, Row, Screen, Stat, T, UpdatedAt } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeMaxPower, type MaxPowerReading } from '@/lib/consumption';
 import { fmtDate, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 
 import { useContract, useMaxPower } from './queries';
 import { ReactiveSection } from './reactive-section';
+import { TripRiskSection } from './trip-risk';
 import { rangeMonths, type RangeKey, type SupplyRef } from './types';
 
 const OPTIONS: { value: RangeKey; label: string }[] = [
@@ -45,7 +46,6 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
 
   const absMax = monthly.reduce<MaxPowerReading | null>((m, r) => (!m || r.max.kw > m.kw ? r.max : m), null);
   const avgMax = monthly.length ? monthly.reduce((s, r) => s + r.max.kw, 0) / monthly.length : 0;
-  const over = p1 ? rows.filter((r) => r.kw > p1) : [];
   const usage = p1 && absMax ? (absMax.kw / p1) * 100 : 0;
   const hourCount = new Map<string, number>();
   for (const r of rows) hourCount.set(r.time.slice(0, 2), (hourCount.get(r.time.slice(0, 2)) ?? 0) + 1);
@@ -53,8 +53,9 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
 
   return (
     <Screen refreshing={q.loading && !!q.data} onRefresh={q.refresh}>
+      <TripRiskSection supply={supply} />
       <Card
-        title="Potencia máxima"
+        title="Picos de potencia medidos"
         info="Es la potencia más alta que has demandado en cada mes (en kW), registrada por tu contador. Si se acerca o supera la contratada, puede saltar el limitador. Si siempre queda muy por debajo, estás pagando potencia que no usas.">
         <Chips options={OPTIONS} value={range} onChange={setRange} />
       </Card>
@@ -87,21 +88,6 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
               </View>
             )}
           </Card>
-
-          {p1 > 0 && (
-            <Notice tone={over.length ? 'warning' : usage < 60 ? 'info' : 'good'}>
-              <T style={{ fontWeight: '700' }}>
-                {over.length ? 'Has superado la potencia contratada' : usage < 60 ? 'Podrías bajar la potencia' : 'Tu potencia está bien ajustada'}
-              </T>
-              <T variant="small" style={{ color: c.text }}>
-                {over.length
-                  ? `Ha ocurrido ${over.length} ${over.length === 1 ? 'vez' : 'veces'} en el periodo. Si el limitador salta a menudo, valora subirla o no encender a la vez los aparatos de más consumo (horno, vitro, lavadora, aire acondicionado).`
-                  : usage < 60
-                    ? `Tu pico es solo el ${fmtNum(usage, 0)} % de lo contratado: bajar la potencia reduciría el término fijo de tu factura.`
-                    : 'Tus picos están dentro de lo contratado con un margen razonable.'}
-              </T>
-            </Notice>
-          )}
 
           <Card title="Pico de cada mes" subtitle="En rojo, los meses en los que superaste la potencia contratada">
             <BarChart

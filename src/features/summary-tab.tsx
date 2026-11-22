@@ -13,6 +13,7 @@ import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
 import { useContract, useMaxPower } from './queries';
+import { TripRiskSummaryCard } from './trip-risk';
 import { rangeMonths, type SupplyRef } from './types';
 
 export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
@@ -55,7 +56,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const maxPeak = maxRows.reduce<(typeof maxRows)[number] | null>((m, r) => (!m || r.kw > m.kw ? r : m), null);
   const p1 = contractedKW[0] ?? 0;
 
-  const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, p1, peakKW: maxPeak?.kw ?? 0, prices: settings.prices.energy }), [yearS, curS, p1, maxPeak, settings.prices.energy]);
+  const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: settings.prices.energy }), [yearS, curS, settings.prices.energy]);
 
   const nothing = !q.loading && !curS.total && !prevS.total && !yearS.total;
 
@@ -67,6 +68,8 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
       {q.loading && (yearS.total > 0 || curS.total > 0) ? <InlineLoading text="Actualizando con Datadis…" /> : null}
       {q.error && !yearS.total ? <ErrorBox message={q.error} onRetry={q.refresh} /> : null}
       {nothing && !q.error ? <Notice tone="warning">Datadis todavía no tiene datos de consumo para este suministro.</Notice> : null}
+
+      <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />
 
       {/* ---------- Este mes ---------- */}
       {curS.total > 0 && (
@@ -199,13 +202,9 @@ type Tip = { title: string; text: string; tone: 'info' | 'warning' | 'good' };
 
 function buildTips({
   yearS,
-  p1,
-  peakKW,
   prices,
 }: {
   yearS: ReturnType<typeof summarize>;
-  p1: number;
-  peakKW: number;
   prices: Record<Period, number>;
 }): Tip[] {
   const tips: Tip[] = [];
@@ -221,23 +220,6 @@ function buildTips({
     });
   } else if (share('P3') > 45) {
     tips.push({ tone: 'good', title: `¡Bien! El ${fmtNum(share('P3'), 0)} % de tu consumo es en valle`, text: 'Aprovechas las horas más baratas.' });
-  }
-
-  if (p1 > 0 && peakKW > 0) {
-    if (peakKW > p1) {
-      tips.push({
-        tone: 'warning',
-        title: 'Has superado tu potencia contratada',
-        text: `Tu pico fue de ${fmtKW(peakKW, 2)} con ${fmtKW(p1, 2)} contratados. Si te salta el limitador, valora subir la potencia o no encender a la vez los aparatos que más gastan.`,
-      });
-    } else if (peakKW / p1 < 0.6 && p1 > 2.3) {
-      const suggested = Math.max(2.3, Math.ceil(peakKW * 1.2 * 10) / 10);
-      tips.push({
-        tone: 'info',
-        title: 'Podrías bajar la potencia contratada',
-        text: `Tu pico del último año fue ${fmtKW(peakKW, 2)} y tienes ${fmtKW(p1, 2)}. Con unos ${fmtKW(suggested, 1)} ahorrarías aproximadamente ${fmtEur((p1 - suggested) * 0.09 * 365)} al año en el término fijo.`,
-      });
-    }
   }
 
   const baseYear = yearS.baseLoadKW * 24 * 365;
