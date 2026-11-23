@@ -12,6 +12,7 @@ import { normalize, normalizeMaxPower } from '@/lib/consumption';
 import { setJSON } from '@/lib/storage';
 import { fmtDate, fmtEur, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum, fmtPct, pad2, cap } from '@/lib/format';
 import { STANDARD_POWERS, TRIP_CURVE, analyzeTripRisk, contractPeriods, riskLevel, whatIf, type DayRisk, type TripRisk } from '@/lib/trip-risk';
+import { currentContract } from '@/lib/contracts';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -34,7 +35,7 @@ export function useTripRisk(supply: SupplyRef) {
   const contract = useContract(supply);
 
   const contracted = useMemo(() => {
-    const ct = contract.data?.contracts?.slice().sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))[0];
+    const ct = currentContract(contract.data?.contracts);
     return ct?.contractedPowerkW ?? [];
   }, [contract.data]);
 

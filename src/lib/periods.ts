@@ -36,3 +36,14 @@ export function periodFor(start: Date): Period {
   if ((h >= 10 && h < 14) || (h >= 18 && h < 22)) return 'P1';
   return 'P2';
 }
+
+/**
+ * Periodo de un pico de potencia de Datadis. Según la distribuidora llega como «PUNTA»/«LLANO»/
+ * «VALLE», «P1»…«P3» o simplemente «1»…«3».
+ */
+export function maxPowerPeriod(p: string | number | null | undefined): Period {
+  const s = String(p ?? '').trim().toUpperCase();
+  if (/^(P?3|VALLE)$/.test(s)) return 'P3';
+  if (/^(P?2|LLANO)$/.test(s)) return 'P2';
+  return 'P1';
+}

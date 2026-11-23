@@ -6,13 +6,21 @@ import type { SupplyRef } from './types';
 export type Bounds = { min: MonthKey; max: MonthKey };
 
 /** Meses en los que puede haber datos: desde el alta del suministro hasta hoy (o la baja). */
+/** Primer mes que Datadis acepta: el primero cuyo día 1 está dentro de los últimos 2 años */
+export function earliestQueryMonth(today = new Date()): string {
+  const limit = new Date(today.getFullYear() - 2, today.getMonth(), today.getDate());
+  const first = new Date(limit.getFullYear(), limit.getMonth(), 1);
+  const m = first >= limit ? first : new Date(limit.getFullYear(), limit.getMonth() + 1, 1);
+  return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function supplyBounds(s: SupplyRef): Bounds {
   const now = monthKey(new Date());
   const from = s.validDateFrom?.match(/^(\d{4})[/-](\d{2})/);
   const to = s.validDateTo?.match(/^(\d{4})[/-](\d{2})/);
-  let min = from ? `${from[1]}-${from[2]}` : addMonths(now, -24);
-  // Datadis no suele ofrecer más de unos años de histórico
-  if (min < addMonths(now, -60)) min = addMonths(now, -60);
+  let min = from ? `${from[1]}-${from[2]}` : earliestQueryMonth();
+  // Datadis rechaza (error 400) las consultas que empiezan hace más de 2 años
+  if (min < earliestQueryMonth()) min = earliestQueryMonth();
   let max = to ? `${to[1]}-${to[2]}` : now;
   if (max > now) max = now;
   if (min > max) min = max;

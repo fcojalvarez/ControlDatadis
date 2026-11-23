@@ -53,7 +53,8 @@ import {
   fmtNum,
   pad2,
 } from '@/lib/format';
-import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
+import { maxPowerPeriod, PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
+import { currentContract } from '@/lib/contracts';
 
 import { daysInMonth, useConsumptionMonths } from './consumption-data';
 import {
@@ -115,7 +116,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
   const q = useConsumptionMonths(supply, allMonths, mt);
   const contract = useContract(supply);
-  const contractedKW = useMemo(() => contract.data?.contracts[0]?.contractedPowerkW ?? [], [contract.data]);
+  const contractedKW = useMemo(() => currentContract(contract.data?.contracts)?.contractedPowerkW ?? [], [contract.data]);
   const p1 = contractedKW[0] ?? 0;
   const p2 = contractedKW[1] ?? p1;
   const limitFor = (p: Period) => (p === 'P3' ? p2 : p1);
@@ -388,7 +389,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   for (const [day, m] of measured.byDay) {
     if (day >= range.from && day <= range.to && (!measuredMax || m.kw > measuredMax.kw)) measuredMax = m;
   }
-  const measuredLimit = measuredMax ? (/valle/i.test(measuredMax.period) ? p2 : p1) : 0;
+  const measuredLimit = measuredMax ? (maxPowerPeriod(measuredMax.period) === 'P3' ? p2 : p1) : 0;
   const measuredWhen = measuredMax ? `${dayMonth(measuredMax.date)} a las ${measuredMax.time}` : '';
   const curveTop = Math.max(0, ...curvePeaks.byHour);
   const avgLabel = mt === 1 ? 'Media de 15 min más alta' : 'Media de 1 h más alta';

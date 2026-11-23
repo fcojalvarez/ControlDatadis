@@ -8,6 +8,8 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeMaxPower, type MaxPowerReading } from '@/lib/consumption';
 import { fmtDate, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
+import { PERIOD_LABELS, type Period } from '@/lib/periods';
+import { currentContract } from '@/lib/contracts';
 
 import { useContract, useMaxPower } from './queries';
 import { ReactiveSection } from './reactive-section';
@@ -28,7 +30,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
   const { start, end } = useMemo(() => rangeMonths(range, supply), [range, supply]);
   const q = useMaxPower(supply, start, end);
   const contract = useContract(supply);
-  const contracted = contract.data?.contracts[0]?.contractedPowerkW ?? [];
+  const contracted = currentContract(contract.data?.contracts)?.contractedPowerkW ?? [];
   const p1 = contracted[0] ?? 0;
 
   const rows = useMemo(() => (q.data ? normalizeMaxPower(q.data.rows) : []), [q.data]);
@@ -82,7 +84,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
                 label: fmtMonthShort(m.key).split(' ')[0],
                 detail: fmtMonthLong(m.key),
                 segments: [{ value: m.max.kw, color: p1 && m.max.kw > p1 ? c.danger : c.tint }],
-                note: `${fmtDate(m.max.date)} a las ${m.max.time} · ${m.max.period}`,
+                note: `${fmtDate(m.max.date)} a las ${m.max.time} · ${PERIOD_LABELS[m.max.period as Period] ?? m.max.period}`,
               }))}
               formatValue={(v) => fmtKW(v, 2)}
               unit="kW"
@@ -94,7 +96,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
                 columns={[
                   { title: 'Mes', render: (m: MonthRow) => fmtMonthShort(m.key) },
                   ...periods.map((p) => ({
-                    title: p,
+                    title: PERIOD_LABELS[p as Period] ?? p,
                     render: (m: MonthRow) => (m.byPeriod[p] ? `${fmtNum(m.byPeriod[p].kw, 2)}` : '—'),
                     color: (m: MonthRow) => (p1 && m.byPeriod[p] && m.byPeriod[p].kw > p1 ? c.danger : undefined),
                   })),
@@ -105,7 +107,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
                 <KeyValue
                   key={i}
                   k={`${fmtDate(r.date)} · ${r.time}`}
-                  hint={r.period}
+                  hint={PERIOD_LABELS[r.period as Period] ?? r.period}
                   v={<T style={{ fontWeight: '700', color: p1 && r.kw > p1 ? c.danger : c.text }}>{fmtKW(r.kw, 2)}</T>}
                 />
               ))}

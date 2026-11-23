@@ -24,6 +24,7 @@ import { normalize } from '@/lib/consumption';
 import { cap, fmtDate, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS } from '@/lib/periods';
 import { contractPeriods } from '@/lib/trip-risk';
+import { currentContract } from '@/lib/contracts';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -48,7 +49,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
   const contractedOn = useMemo(() => {
     const contracts = contract.data?.contracts ?? [];
     const history = contractPeriods(contracts);
-    const latest = [...contracts].sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))[0]?.contractedPowerkW ?? [];
+    const latest = currentContract(contracts)?.contractedPowerkW ?? [];
     return (day: string) => {
       const d = day.replace(/\//g, '-');
       return history.find((h) => h.from <= d && (!h.to || d <= h.to))?.kw ?? latest;

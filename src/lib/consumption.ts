@@ -1,6 +1,6 @@
 import type { ConsumptionRaw, MaxPowerRaw } from '@/api/datadis';
 import { ym, ymd } from '@/lib/format';
-import { periodFor, type Period } from '@/lib/periods';
+import { maxPowerPeriod, periodFor, type Period } from '@/lib/periods';
 
 /** Lectura normalizada: el intervalo empieza en `start`. */
 export type Reading = {
@@ -45,9 +45,23 @@ function parseDateTime(date: string, time: string): Date | null {
  */
 export function normalize(rows: CompactReading[], intervalMin: number): Reading[] {
   const out: Reading[] = [];
+  // Filas repetidas (misma fecha y hora) y la fila «00:00» que a veces añade i-DE a un día que ya
+  // trae sus 24 horas (01:00…24:00): se descartan para no contar dos veces el mismo intervalo.
+  const seen = new Set<string>();
+  const ends = new Set<number>();
+  for (const [date, time] of rows) {
+    if (!/^0?0:00/.test(time)) {
+      const e = parseDateTime(date, time);
+      if (e) ends.add(e.getTime());
+    }
+  }
   for (const [date, time, kwh, real, surplus, generation, selfConsumption] of rows) {
+    const id = `${date} ${time}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
     const end = parseDateTime(date, time);
     if (!end) continue;
+    if (/^0?0:00/.test(time) && ends.has(end.getTime())) continue;
     const start = new Date(end.getTime() - intervalMin * 60_000);
     out.push({
       start: start.getTime(),
@@ -335,7 +349,8 @@ export function normalizeMaxPower(rows: MaxPowerRaw[]): MaxPowerReading[] {
         date: r.date,
         time: r.time,
         kw: inWatts ? Number(r.maxPower) / 1000 : Number(r.maxPower),
-        period: r.period,
+        // Periodo normalizado a P1/P2/P3 (cada distribuidora lo escribe a su manera)
+        period: maxPowerPeriod(r.period),
       };
     })
     .filter((r) => Number.isFinite(r.kw))

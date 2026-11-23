@@ -16,6 +16,7 @@ import { useTheme } from '@/hooks/use-theme';
 import type { CompactReading } from '@/lib/consumption';
 import { fmtDate, fmtNum, fmtPct, ym } from '@/lib/format';
 import { cacheGet, getJSON } from '@/lib/storage';
+import { currentContract } from '@/lib/contracts';
 
 function isActive(s: Supply) {
   if (!s.validDateTo) return true;
@@ -128,7 +129,7 @@ export default function SuppliesScreen() {
 function SupplyCard({ s }: { s: Supply }) {
   const c = useTheme();
   const contract = useContract(s);
-  const ct = contract.data?.contracts?.slice().sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))[0];
+  const ct = currentContract(contract.data?.contracts);
   const kw = ct?.contractedPowerkW ?? [];
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Abrir ${s.address}`} onPress={() => openSupply(s)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>

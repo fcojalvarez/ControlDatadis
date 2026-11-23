@@ -11,6 +11,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { estimateCost, normalize, pctChange, summarize } from '@/lib/consumption';
 import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
+import { currentContract } from '@/lib/contracts';
 
 import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -52,7 +53,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const { start, end } = useMemo(() => rangeMonths('12m', supply), [supply]);
   const maxp = useMaxPower(supply, start, end);
 
-  const ct = contract.data?.contracts?.slice().sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1))[0];
+  const ct = currentContract(contract.data?.contracts);
   const contractedKW = useMemo(() => ct?.contractedPowerkW ?? [], [ct]);
   const periodColors: Record<Period, string> = { P1: c.p1, P2: c.p2, P3: c.p3 };
 

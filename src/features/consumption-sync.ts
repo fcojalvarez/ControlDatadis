@@ -205,7 +205,7 @@ class ConsumptionSync {
       const ym = job.month.replace('-', '/');
       // Descargado hace menos de un día: Datadis rechazaría la misma consulta, se usa lo guardado
       const recent = await cacheGet<MonthEntry>(job.key);
-      if (recent && Date.now() - recent.ts < MIN_REFETCH_MS) {
+      if (recent && Date.now() - recent.ts < MIN_REFETCH_MS && !isFrozenMonth(recent.data.rows)) {
         this.fresh.set(job.key, recent.data);
         this.errors.delete(job.key);
         this.running = null;
@@ -223,6 +223,11 @@ class ConsumptionSync {
           authorizedNif: job.authorizedNif,
         });
         const rows = compact(r.rows).filter((row) => row[0].startsWith(ym));
+        if (isFrozenMonth(rows)) {
+          // Fallo conocido de algunas distribuidoras (UFD, desde oct. 2026): todo el mes llega con
+          // la fecha del día 1 y la curva de ese día repetida. No son datos reales: no se guardan.
+          throw new FrozenDataError();
+        }
         const saved = await cacheGet<MonthEntry>(job.key);
         if (!rows.length && saved?.data.rows.length) {
           // Datadis devolvió vacío pero ya teníamos el mes: se conserva
@@ -239,13 +244,22 @@ class ConsumptionSync {
       } catch (e) {
         this.running = null;
         const msg = e instanceof Error ? e.message : String(e);
+        if (e instanceof FrozenDataError) {
+          // Se vuelve a probar en un día (la misma consulta no se puede repetir antes)
+          const at = Date.now() + MIN_REFETCH_MS;
+          this.delayed.set(job.key, { job, at, blocked: false });
+          if (recent?.data.rows.length && !isFrozenMonth(recent.data.rows)) this.fresh.set(job.key, recent.data);
+          this.errors.set(job.key, msg);
+          this.emit(job.key);
+          continue;
+        }
         if (e instanceof DatadisError && e.repeated) {
           // Solo este mes está bloqueado: espera su turno y los demás siguen sin pausa
           const at = Date.now() + e.retryAfterMs;
           this.blockedUntil.set(job.key, at);
           this.saveBlocked();
           this.delayed.set(job.key, { job, at, blocked: true });
-          if (recent?.data.rows.length) {
+          if (recent?.data.rows.length && !isFrozenMonth(recent.data.rows)) {
             this.fresh.set(job.key, recent.data); // se sigue usando lo guardado
             this.errors.delete(job.key);
           } else {
@@ -275,6 +289,20 @@ class ConsumptionSync {
     // Cola vacía: despertar cuando toque reintentar algún mes
     this.wakeForDelayed();
   }
+}
+
+class FrozenDataError extends Error {
+  constructor() {
+    super('La distribuidora ha enviado datos erróneos (todos los días con la fecha del día 1)');
+    this.name = 'FrozenDataError';
+  }
+}
+
+/** ¿Respuesta «congelada»? Muchas filas pero todas con la misma fecha */
+export function isFrozenMonth(rows: CompactReading[]): boolean {
+  if (rows.length <= 100) return false;
+  const first = rows[0][0];
+  return rows.every((r) => r[0] === first);
 }
 
 function higher(a: MonthJob | undefined, b: MonthJob): MonthJob {

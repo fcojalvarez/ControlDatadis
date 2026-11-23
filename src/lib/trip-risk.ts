@@ -26,6 +26,7 @@
  */
 
 import type { MaxPowerReading, Reading } from '@/lib/consumption';
+import { maxPowerPeriod } from '@/lib/periods';
 
 /** Tabla orientativa de la curva de disparo (UNE 20317) para mostrar al usuario */
 export const TRIP_CURVE: { factor: number; label: string; time: string }[] = [
@@ -112,7 +113,7 @@ function median(a: number[]): number {
 function limitFor(period: string, contracted: number[]): number {
   const p1 = contracted[0] ?? 0;
   const p2 = contracted[1] ?? p1;
-  return /^(P3|VALLE)$/i.test(period) ? p2 : p1;
+  return maxPowerPeriod(period) === 'P3' ? p2 : p1;
 }
 
 /** Tramo de contrato con su potencia, para aplicar en cada día la potencia que había entonces */

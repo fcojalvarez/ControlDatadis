@@ -230,7 +230,8 @@ async function loginOnce(username: string, password: string): Promise<string> {
       // ignorado
     }
   }
-  if (res.status === 401 || res.status === 403 || /credential|incorrect|bad/i.test(text)) {
+  // Datadis responde a una contraseña errónea con un 500 «Bad credentials» (no confundir con «Bad Gateway»)
+  if (res.status === 401 || res.status === 403 || /bad credentials|credenciales|incorrect/i.test(text)) {
     throw new AuthError();
   }
   throw new DatadisError(describeHttpError(res.status, text), res.status);

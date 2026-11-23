@@ -7,7 +7,7 @@ import type { CompactReading } from '@/lib/consumption';
 import { cacheGet } from '@/lib/storage';
 import { addMonths, monthDate, monthKey, type MonthKey } from '@/lib/months';
 
-import { PRIORITY, consumptionSync, type MonthJob } from './consumption-sync';
+import { PRIORITY, consumptionSync, isFrozenMonth, type MonthJob } from './consumption-sync';
 import type { SupplyRef } from './types';
 
 export { addMonths, daysInMonth, monthDate, monthKey, monthRange, type MonthKey } from '@/lib/months';
@@ -88,7 +88,10 @@ export function useConsumptionMonths(
       let oldest: number | null = null;
       for (const m of list) {
         const c = await cacheGet<MonthEntry>(prefix + m);
-        if (c) {
+        if (c && isFrozenMonth(c.data.rows)) {
+          // Guardado antes de detectar el fallo de la distribuidora: no vale, se vuelve a pedir
+          toFetch.push(m);
+        } else if (c) {
           found[m] = c.data.rows;
           distributorErrors.push(...(c.data.distributorErrors ?? []));
           oldest = oldest === null ? c.ts : Math.min(oldest, c.ts);
