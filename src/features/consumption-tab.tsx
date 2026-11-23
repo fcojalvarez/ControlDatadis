@@ -3,12 +3,12 @@ import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import type { MeasurementType } from '@/api/datadis';
 import { BarChart, SplitBar, type BarDatum } from '@/components/bar-chart';
 import { DateRangePicker } from '@/components/date-range-picker';
-import { Select } from '@/components/select';
+import { BottomSheet } from '@/components/select';
 import { Heatmap } from '@/components/heatmap';
 import {
   Card,
@@ -100,8 +100,10 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const [mtPref, setMt] = useState<MeasurementType>(0);
   const mt: MeasurementType = nDays <= 31 ? mtPref : 0;
   const [viewPref, setView] = useState<ChartView | null>(null);
-  const [unitPref, setUnit] = useState<Unit>('kwh');
-  const [heat, setHeat] = useState(false);
+  const [what, setWhat] = useState<'kwh' | 'kw' | 'heat'>('kwh');
+  const [optsOpen, setOptsOpen] = useState(false);
+  const unitPref: Unit = what === 'kw' ? 'kw' : 'kwh';
+  const heat = what === 'heat';
   const [showInfo, setShowInfo] = useState(false);
 
   const win = useMemo(() => monthsOfRange(range), [range]);
@@ -365,6 +367,31 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
           };
   }
 
+  // Título y resumen de la gráfica: dicen en palabras qué se está viendo
+  const every15 = mt === 1 ? 'cada 15 min' : 'cada hora';
+  const chartTitle = showHeat
+    ? 'Mapa de calor'
+    : unit === 'kw'
+      ? isDay
+        ? 'Potencia a lo largo del día'
+        : { dias: 'Potencia máxima por día', meses: 'Potencia máxima por mes', horas: 'Potencia máxima por hora', semana: '' }[view]
+      : isDay
+        ? 'Consumo a lo largo del día'
+        : { dias: 'Consumo por día', meses: 'Consumo por mes', horas: 'Consumo medio por hora', semana: 'Consumo medio por día de la semana' }[view];
+  const chartSubtitle = showHeat
+    ? 'Consumo medio por día de la semana y hora'
+    : unit === 'kw'
+      ? `En kW · ${isDay ? every15 : 'línea roja: tu contratada'}`
+      : `En kWh${isDay || nDays <= 31 ? ` · datos ${every15}` : ''}`;
+  const chartIdle =
+    unit === 'kw'
+      ? `Pico ${fmtKW(Math.max(0, ...curvePeaks.byHour), 2)}${p1 ? ` · contratada ${fmtKW(p1, 2)}` : ''}`
+      : isDay
+        ? `Total ${fmtKWh(s.total, 1)}`
+        : view === 'dias'
+          ? `Media: ${fmtKWh(s.avgPerDay, 1)} al día`
+          : `Total ${fmtKWh(s.total, 0)}`;
+
   const loadingFirst = q.loading && readings.length === 0;
   const infoButton = (
     <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={8} accessibilityLabel="Más información">
@@ -435,36 +462,28 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
           {/* ---------- Gráfica ---------- */}
           <Card>
-            <View style={styles.toolbar}>
-              {powerAvailable ? (
-                <Select<Unit>
-                  title="Mostrar"
-                  value={unit}
-                  onChange={setUnit}
-                  options={[
-                    { value: 'kwh', label: 'Energía', hint: 'kWh consumidos' },
-                    { value: 'kw', label: 'Potencia', hint: 'kW demandados, picos y potencia contratada' },
-                  ]}
-                />
-              ) : null}
-              {!isDay && !showHeat ? <Select<ChartView> title="Agrupar por" value={view} onChange={setView} options={viewOptions} /> : null}
-              {nDays <= 31 && !showHeat ? (
-                <Select<MeasurementType>
-                  title="Detalle"
-                  value={mt}
-                  onChange={setMt}
-                  options={[
-                    { value: 0, label: '1 h', hint: 'Un dato por hora' },
-                    { value: 1, label: '15 min', hint: 'Un dato cada 15 minutos. Más detalle; no todos los contadores lo ofrecen' },
-                  ]}
-                />
-              ) : null}
-              {isDay ? (
-                <>
-                  <View style={{ flex: 1 }} />
-                  {infoButton}
-                </>
-              ) : null}
+            <View style={styles.chartHeader}>
+              <Pressable
+                onPress={() => setOptsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Cambiar gráfica: ${chartTitle}`}
+                style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.7 : 1 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <T variant="subtitle" numberOfLines={1} style={{ flexShrink: 1 }}>
+                    {chartTitle}
+                  </T>
+                  <Ionicons name="chevron-down" size={18} color={c.tint} />
+                </View>
+                <T variant="small">{chartSubtitle}</T>
+              </Pressable>
+              <Pressable
+                onPress={() => setOptsOpen(true)}
+                hitSlop={8}
+                accessibilityLabel="Opciones de la gráfica"
+                style={[styles.optsBtn, { backgroundColor: c.backgroundElement }]}>
+                <Ionicons name="options-outline" size={20} color={c.text} />
+              </Pressable>
+              {infoButton}
             </View>
             {showInfo ? (
               <View style={[styles.infoBox, { backgroundColor: c.backgroundElement }]}>
@@ -477,15 +496,33 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                 </T>
               </View>
             ) : null}
-            {!isDay ? (
-              <View style={styles.switchRow}>
-                <Switch value={heat} onValueChange={setHeat} trackColor={{ true: c.tint }} />
-                <T variant="small" style={{ flex: 1 }}>
-                  Mapa de calor
-                </T>
-                {infoButton}
-              </View>
-            ) : null}
+
+            <BottomSheet visible={optsOpen} onClose={() => setOptsOpen(false)} title="Qué ver en la gráfica">
+              <OptionGroup<'kwh' | 'kw' | 'heat'>
+                title="Dato"
+                value={showHeat ? 'heat' : unit}
+                onChange={setWhat}
+                options={[
+                  { value: 'kwh', label: 'Consumo (kWh)', hint: 'Energía gastada, por colores de periodo' },
+                  ...(isDay || view !== 'semana'
+                    ? [{ value: 'kw' as const, label: 'Potencia (kW)', hint: 'Picos de potencia frente a tu potencia contratada' }]
+                    : []),
+                  ...(!isDay ? [{ value: 'heat' as const, label: 'Mapa de calor', hint: 'A qué horas y qué días consumes más' }] : []),
+                ]}
+              />
+              {!isDay && !showHeat ? <OptionGroup<ChartView> title="Agrupar por" value={view} onChange={setView} options={viewOptions} /> : null}
+              {nDays <= 31 && !showHeat ? (
+                <OptionGroup<MeasurementType>
+                  title="Detalle de los datos"
+                  value={mt}
+                  onChange={setMt}
+                  options={[
+                    { value: 0, label: 'Cada hora', hint: 'Un dato por hora' },
+                    { value: 1, label: 'Cada 15 minutos', hint: 'Más detalle; no todos los contadores lo ofrecen' },
+                  ]}
+                />
+              ) : null}
+            </BottomSheet>
 
             {showHeat ? (
               <Heatmap rows={WEEKDAYS_SHORT} rowNames={WEEKDAYS} matrix={s.heat} formatValue={(v) => fmtKWh(v, 2)} />
@@ -499,6 +536,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                 legend={chart.legend}
                 minBarWidth={chart.minBar}
                 labelEvery={chart.every}
+                unit={unit === 'kw' ? 'kW' : 'kWh'}
+                idle={chartIdle}
               />
             ) : null}
 
@@ -710,8 +749,45 @@ const styles = StyleSheet.create({
   miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
   periodRow: { flexDirection: 'row' },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flexWrap: 'wrap' },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  optsBtn: { borderRadius: 10, padding: 8 },
+  optGroup: { marginBottom: Spacing.two },
+  optRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
   infoBox: { borderRadius: 10, padding: 10 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   export: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
 });
+
+/** Grupo de opciones con radio, dentro de la hoja de opciones de la gráfica */
+function OptionGroup<V extends string | number>({
+  title,
+  value,
+  onChange,
+  options,
+}: {
+  title: string;
+  value: V;
+  onChange: (v: V) => void;
+  options: { value: V; label: string; hint?: string }[];
+}) {
+  const c = useTheme();
+  return (
+    <View style={styles.optGroup}>
+      <T variant="small" style={{ fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+        {title}
+      </T>
+      {options.map((o) => {
+        const sel = o.value === value;
+        return (
+          <Pressable key={String(o.value)} onPress={() => onChange(o.value)} style={[styles.optRow, { borderTopColor: c.border }]} accessibilityRole="radio" accessibilityState={{ checked: sel }}>
+            <Ionicons name={sel ? 'radio-button-on' : 'radio-button-off'} size={22} color={sel ? c.tint : c.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <T style={{ fontWeight: sel ? '700' : '500' }}>{o.label}</T>
+              {o.hint ? <T variant="small">{o.hint}</T> : null}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

@@ -163,6 +163,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
                 ],
               }))}
               formatValue={(v) => fmtEur(v)}
+              unit="€"
               height={170}
               legend={[
                 { color: c.tint, label: 'Energía' },

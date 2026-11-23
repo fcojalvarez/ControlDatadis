@@ -1,5 +1,6 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import { LegendItem, T } from '@/components/ui';
@@ -28,6 +29,10 @@ type Props = {
   totalLabel?: string;
   /** Marca (punto) opcional sobre cada barra, en la misma escala (p. ej. pico medido por el contador) */
   markers?: ({ value: number; color: string } | null)[];
+  /** Unidad del eje Y (se muestra encima de los números) */
+  unit?: string;
+  /** Resumen que se ve en el panel superior mientras no hay ninguna barra tocada */
+  idle?: string;
 };
 
 const AXIS_W = 40;
@@ -53,6 +58,8 @@ export function BarChart({
   legend,
   totalLabel = 'Total',
   markers = [],
+  unit,
+  idle,
 }: Props) {
   const c = useTheme();
   const [width, setWidth] = useState(0);
@@ -83,12 +90,11 @@ export function BarChart({
 
   return (
     <View onLayout={onLayout}>
-      {/* Panel de detalle de la barra seleccionada */}
-      {selDatum ? (
-      <View style={{ minHeight: 48, justifyContent: 'center', backgroundColor: c.backgroundElement, borderRadius: 10, padding: 10, marginBottom: 6 }}>
+      {/* Panel fijo: resumen o detalle de la barra tocada (no cambia de alto al tocar) */}
+      <View style={{ minHeight: 52, justifyContent: 'center', backgroundColor: c.backgroundElement, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 }}>
         {selDatum ? (
           <View style={{ gap: 2 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <T style={{ fontWeight: '700', flex: 1 }}>{selDatum.detail ?? selDatum.label}</T>
               {mode === 'stacked' && (
                 <T style={{ fontWeight: '700' }}>
@@ -96,6 +102,9 @@ export function BarChart({
                   {formatValue(totals[sel!])}
                 </T>
               )}
+              <Pressable onPress={() => setSelected(null)} hitSlop={10} accessibilityLabel="Quitar selección">
+                <Ionicons name="close" size={18} color={c.textSecondary} />
+              </Pressable>
             </View>
             {(selDatum.segments.length > 1 || mode === 'grouped') && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }}>
@@ -106,10 +115,22 @@ export function BarChart({
             )}
             {selDatum.note ? <T variant="small">{selDatum.note}</T> : null}
           </View>
-        ) : null}
+        ) : (
+          <View style={{ gap: 2 }}>
+            {idle ? <T style={{ fontWeight: '700' }}>{idle}</T> : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="hand-left-outline" size={14} color={c.textSecondary} />
+              <T variant="small">Toca una barra para ver su valor</T>
+            </View>
+          </View>
+        )}
       </View>
-      ) : null}
 
+      {unit && width > 0 ? (
+        <T variant="small" style={{ fontWeight: '600', marginBottom: -2 }}>
+          {unit}
+        </T>
+      ) : null}
       {width > 0 && (
         <View style={{ flexDirection: 'row' }}>
           <Svg width={AXIS_W} height={height}>

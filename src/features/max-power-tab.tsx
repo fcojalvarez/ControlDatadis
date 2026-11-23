@@ -85,6 +85,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
                 note: `${fmtDate(m.max.date)} a las ${m.max.time} · ${m.max.period}`,
               }))}
               formatValue={(v) => fmtKW(v, 2)}
+              unit="kW"
               referenceLines={p1 ? [{ value: p1, color: c.danger, label: `contratada ${fmtNum(p1, 2)} kW` }] : []}
               height={170}
             />

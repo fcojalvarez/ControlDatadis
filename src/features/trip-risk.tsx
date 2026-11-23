@@ -215,6 +215,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
               note: `≈ ${fmtNum(m.expected, 1)} cortes estimados · pico ${fmtNum(m.maxU * 100, 0)} % de tu potencia`,
             }))}
             formatValue={(v) => fmtPct(v / 100)}
+            unit="%"
             height={150}
           />
         ) : (
@@ -225,6 +226,7 @@ export function TripRiskSection({ supply }: { supply: SupplyRef }) {
               segments: [{ value: v * 100, color: levelColor(c, v * 30) }],
             }))}
             formatValue={(v) => `${fmtNum(v, v < 1 ? 2 : 1)} %`}
+            unit="%"
             labelEvery={3}
             height={150}
           />

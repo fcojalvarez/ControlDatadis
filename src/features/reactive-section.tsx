@@ -49,6 +49,7 @@ export function ReactiveSection({ supply }: { supply: SupplyRef }) {
               segments: columns.map((k, i) => ({ value: num(r[k]), color: palette[i % palette.length], name: label(k) })),
             }))}
             formatValue={(v) => `${fmtNum(v, 1)} kVArh`}
+            unit="kVArh"
             height={150}
             legend={columns.map((k, i) => ({ color: palette[i % palette.length], label: label(k) }))}
           />

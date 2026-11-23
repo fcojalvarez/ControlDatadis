@@ -141,6 +141,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
               segments: PERIODS.map((p) => ({ value: m[p], color: periodColors[p], name: PERIOD_LABELS[p] })),
             }))}
             formatValue={(v) => fmtKWh(v, 0)}
+            unit="kWh"
             height={150}
           />
         </Card>
