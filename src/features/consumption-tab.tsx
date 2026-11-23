@@ -246,7 +246,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
         ? {
             data: s.daily.map((d) => ({ label: isMonth ? String(Number(d.key.slice(8))) : fmtDayShort(d.key), detail: `${WEEKDAYS[weekdayOf(d.key)]} ${fmtDate(d.key)}`, segments: stacked(d) })),
             format: (v) => fmtKWh(v, 1),
-            refs: [{ value: s.avgPerDay, color: c.text, label: `media ${fmtNum(s.avgPerDay, 1)} kWh` }],
+            refs: [{ value: s.avgPerDay, color: c.reference, label: `media ${fmtNum(s.avgPerDay, 1)} kWh` }],
             legend: periodLegend,
             minBar: isMonth ? 6 : 5,
           }
