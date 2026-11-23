@@ -1,10 +1,9 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { BarChart, type BarDatum } from '@/components/bar-chart';
 import { Select } from '@/components/select';
-import { Card, Disclosure, InlineLoading, KeyValue, Notice, SavedDataNotice, Screen, T } from '@/components/ui';
+import { Card, InlineLoading, KeyValue, Notice, SavedDataNotice, Screen, ShowMore, Stepper, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { MaxPowerReading } from '@/lib/consumption';
@@ -79,15 +78,19 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
               { value: 'dia', label: 'Por día', hint: 'El pico de cada día del mes que elijas' },
             ]}
           />
-          <View style={{ flex: 1 }} />
           {byMonth ? (
-            <>
-              <Arrow dir={-1} enabled={month > bounds.min} onPress={() => setMonth((m) => addMonths(m, -1))} />
-              <T style={{ fontWeight: '800', minWidth: 92, textAlign: 'center' }}>{cap(fmtMonthShort(month).replace(' ', ' 20'))}</T>
-              <Arrow dir={1} enabled={month < bounds.max} onPress={() => setMonth((m) => addMonths(m, 1))} />
-            </>
+            <View style={{ flex: 1 }}>
+              <Stepper
+                compact
+                label={cap(fmtMonthShort(month).replace(' ', ' 20'))}
+                canPrev={month > bounds.min}
+                canNext={month < bounds.max}
+                onPrev={() => setMonth((m) => addMonths(m, -1))}
+                onNext={() => setMonth((m) => addMonths(m, 1))}
+              />
+            </View>
           ) : (
-            <T style={{ fontWeight: '700' }}>Últimos {mp.monthly.length || 24} meses</T>
+            <T style={{ flex: 1, fontWeight: '700', textAlign: 'right' }}>Últimos {mp.monthly.length || 24} meses</T>
           )}
         </View>
       }>
@@ -148,18 +151,11 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
           info="Momentos en que la potencia superó la contratada. Si coinciden con un corte que recuerdes, ahí lo tienes.">
           {!byMonth ? (
             mp.exceedances.length ? (
-              <>
-                {mp.exceedances.slice(0, 5).map((r, i) => (
-                  <ExceedRow key={i} date={r.date} time={`a las ${r.time}`} period={r.period} kw={r.kw} limit={mp.limitOf(r)} />
-                ))}
-                {mp.exceedances.length > 5 ? (
-                  <Disclosure title={`Ver todos (${mp.exceedances.length})`}>
-                    {mp.exceedances.slice(5).map((r, i) => (
-                      <ExceedRow key={i} date={r.date} time={`a las ${r.time}`} period={r.period} kw={r.kw} limit={mp.limitOf(r)} />
-                    ))}
-                  </Disclosure>
-                ) : null}
-              </>
+              <ShowMore
+                initial={5}
+                label={(n) => `Ver todos (${n})`}
+                items={mp.exceedances.map((r, i) => <ExceedRow key={i} date={r.date} time={`a las ${r.time}`} period={r.period} kw={r.kw} limit={mp.limitOf(r)} />)}
+              />
             ) : (
               <T variant="small">Ningún pico medido ha superado tu potencia contratada en estos {mp.monthly.length} meses.</T>
             )
@@ -176,19 +172,6 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
   );
 }
 
-function Arrow({ dir, enabled, onPress }: { dir: -1 | 1; enabled: boolean; onPress: () => void }) {
-  const c = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!enabled}
-      hitSlop={8}
-      accessibilityLabel={dir < 0 ? 'Mes anterior' : 'Mes siguiente'}
-      style={[styles.arrow, { backgroundColor: c.backgroundElement, opacity: enabled ? 1 : 0.35 }]}>
-      <Ionicons name={dir < 0 ? 'chevron-back' : 'chevron-forward'} size={18} color={c.tint} />
-    </Pressable>
-  );
-}
 
 function ExceedRow({ date, time, period, kw, limit }: { date: string; time: string; period: string; kw: number; limit: number }) {
   const c = useTheme();
@@ -277,8 +260,7 @@ function MonthView({
         height={180}
       />
       <View style={{ marginTop: Spacing.two }}>
-        {recent.slice(0, 3).map(row)}
-        {recent.length > 3 ? <Disclosure title={`Ver los ${recent.length} meses`}>{recent.slice(3).map(row)}</Disclosure> : null}
+        <ShowMore initial={3} label={(n) => `Ver los ${n} meses`} items={recent.map(row)} />
       </View>
     </>
   );
@@ -358,7 +340,6 @@ function DayWeekView({
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  arrow: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   kicker: { fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },

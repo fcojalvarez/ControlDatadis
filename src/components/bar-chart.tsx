@@ -124,8 +124,8 @@ export function BarChart({
                   {formatValue(totals[sel!])}
                 </T>
               )}
-              <Pressable onPress={() => setSelected(null)} hitSlop={10} accessibilityLabel="Quitar selección">
-                <Ionicons name="close" size={18} color={c.textSecondary} />
+              <Pressable onPress={() => setSelected(null)} hitSlop={8} accessibilityLabel="Quitar selección" style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginVertical: -8, marginRight: -6 }}>
+                <Ionicons name="close" size={22} color={c.textSecondary} />
               </Pressable>
             </View>
             {(selDatum.segments.length > 1 || mode === 'grouped') && (

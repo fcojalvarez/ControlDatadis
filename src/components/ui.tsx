@@ -312,6 +312,27 @@ export function DataTable<R>({ columns, rows, footer }: { columns: Column<R>[]; 
 }
 
 /** Sección desplegable ("Ver datos") */
+/**
+ * Lista que enseña las primeras `initial` filas y un botón «Ver todos (N)». Al pulsarlo aparecen
+ * todas y el botón desaparece (no se vuelve a recortar).
+ */
+export function ShowMore({ items, initial, label }: { items: ReactNode[]; initial: number; label: (total: number) => string }) {
+  const c = useTheme();
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, initial);
+  return (
+    <View>
+      {shown}
+      {!all && items.length > initial ? (
+        <Pressable onPress={() => setAll(true)} accessibilityRole="button" style={[styles.disclosure, { borderColor: c.border, minHeight: 44 }]}>
+          <T style={{ color: c.tint, fontWeight: '600', flex: 1 }}>{label(items.length)}</T>
+          <Ionicons name="chevron-down" size={20} color={c.tint} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export function Disclosure({ title, children }: { title: string; children: ReactNode }) {
   const c = useTheme();
   const [open, setOpen] = useState(false);
@@ -405,9 +426,12 @@ export function Stepper({
   canPrev,
   canNext,
   onPressLabel,
+  compact,
 }: {
   label: string;
   sublabel?: string;
+  /** Más bajo, para ir junto a otro control en la misma fila */
+  compact?: boolean;
   onPrev: () => void;
   onNext: () => void;
   canPrev: boolean;
@@ -416,32 +440,37 @@ export function Stepper({
   onPressLabel?: () => void;
 }) {
   const c = useTheme();
-  const arrow = (enabled: boolean, txt: string, fn: () => void, a11y: string) => (
+  // Barra de ancho completo: las flechas ocupan toda la altura y un buen ancho (fáciles de tocar)
+  const arrow = (enabled: boolean, dir: -1 | 1, fn: () => void, a11y: string) => (
     <Pressable
       onPress={fn}
       disabled={!enabled}
-      hitSlop={8}
+      accessibilityRole="button"
       accessibilityLabel={a11y}
-      style={[styles.stepBtn, { backgroundColor: c.backgroundElement, opacity: enabled ? 1 : 0.35 }]}>
-      <T style={{ fontSize: 22, fontWeight: '700', color: c.tint, lineHeight: 26 }}>{txt}</T>
+      style={({ pressed }) => [styles.stepBtn, { opacity: enabled ? (pressed ? 0.5 : 1) : 0.3 }]}>
+      <Ionicons name={dir < 0 ? 'chevron-back' : 'chevron-forward'} size={compact ? 22 : 26} color={c.tint} />
     </Pressable>
   );
   return (
-    <View style={styles.stepper}>
-      {arrow(canPrev, '‹', onPrev, 'Anterior')}
+    <View style={[styles.stepper, { backgroundColor: c.backgroundElement, minHeight: compact ? 44 : 52 }]}>
+      {arrow(canPrev, -1, onPrev, 'Anterior')}
+      <View style={[styles.stepDivider, { backgroundColor: c.border }]} />
       <Pressable
         onPress={onPressLabel}
         disabled={!onPressLabel}
         accessibilityRole={onPressLabel ? 'button' : undefined}
         accessibilityLabel={onPressLabel ? `${label}. Cambiar fechas` : undefined}
-        style={({ pressed }) => ({ flex: 1, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
+        style={({ pressed }) => ({ flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', opacity: pressed ? 0.6 : 1 })}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {onPressLabel ? <Ionicons name="calendar-outline" size={18} color={c.tint} /> : null}
-          <T style={{ fontSize: 18, fontWeight: '700', textAlign: 'center' }}>{label}</T>
+          <T style={{ fontSize: compact ? 16 : 18, fontWeight: '700', textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit>
+            {label}
+          </T>
         </View>
         {sublabel ? <T variant="small" style={{ textAlign: 'center' }}>{sublabel}</T> : null}
       </Pressable>
-      {arrow(canNext, '›', onNext, 'Siguiente')}
+      <View style={[styles.stepDivider, { backgroundColor: c.border }]} />
+      {arrow(canNext, 1, onNext, 'Siguiente')}
     </View>
   );
 }
@@ -595,8 +624,9 @@ const styles = StyleSheet.create({
   tab: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 6, paddingVertical: 12, borderBottomWidth: 3 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  stepBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  stepper: { flexDirection: 'row', alignItems: 'stretch', borderRadius: 14, overflow: 'hidden' },
+  stepDivider: { width: StyleSheet.hairlineWidth, marginVertical: 10 },
+  stepBtn: { width: 56, alignItems: 'center', justifyContent: 'center' },
   center: { padding: Spacing.five, alignItems: 'center', justifyContent: 'center' },
   notice: { borderWidth: 1, borderRadius: 12, padding: Spacing.three, gap: 4 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },

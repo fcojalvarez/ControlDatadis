@@ -105,7 +105,7 @@ export default function SettingsScreen() {
             icon="id-card-outline"
             label={n}
             right={
-              <Pressable onPress={() => removeNif(n)} hitSlop={8} accessibilityLabel={`Quitar ${n}`}>
+              <Pressable onPress={() => removeNif(n)} hitSlop={12} accessibilityLabel={`Quitar ${n}`}>
                 <Ionicons name="close-circle-outline" size={22} color={c.danger} />
               </Pressable>
             }
@@ -122,7 +122,7 @@ export default function SettingsScreen() {
             style={[styles.input, { color: c.text }]}
             onSubmitEditing={addNif}
           />
-          <Pressable onPress={addNif} hitSlop={8} accessibilityLabel="Añadir NIF">
+          <Pressable onPress={addNif} hitSlop={12} accessibilityLabel="Añadir NIF">
             <Ionicons name="add-circle" size={26} color={c.tint} />
           </Pressable>
         </View>

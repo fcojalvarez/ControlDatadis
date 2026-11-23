@@ -733,7 +733,7 @@ const styles = StyleSheet.create({
   miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   periodRow: { flexDirection: 'row' },
   chartHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  optsBtn: { borderRadius: 10, padding: 8 },
+  optsBtn: { borderRadius: 12, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   optGroup: { marginBottom: Spacing.two },
   optRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 10 },
   infoBox: { borderRadius: 10, padding: 10 },

@@ -87,12 +87,12 @@ export function DateRangePicker({
       </ScrollView>
 
       <View style={styles.monthHeader}>
-        <Pressable onPress={() => canPrev && setMonth(addMonths(month, -1))} hitSlop={10} disabled={!canPrev} accessibilityLabel="Mes anterior">
-          <Ionicons name="chevron-back" size={24} color={canPrev ? c.tint : c.border} />
+        <Pressable onPress={() => canPrev && setMonth(addMonths(month, -1))} disabled={!canPrev} accessibilityLabel="Mes anterior" style={[styles.navBtn, { backgroundColor: c.backgroundElement }]}>
+          <Ionicons name="chevron-back" size={26} color={canPrev ? c.tint : c.border} />
         </Pressable>
         <T style={{ flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 17 }}>{cap(fmtMonthLong(month))}</T>
-        <Pressable onPress={() => canNext && setMonth(addMonths(month, 1))} hitSlop={10} disabled={!canNext} accessibilityLabel="Mes siguiente">
-          <Ionicons name="chevron-forward" size={24} color={canNext ? c.tint : c.border} />
+        <Pressable onPress={() => canNext && setMonth(addMonths(month, 1))} disabled={!canNext} accessibilityLabel="Mes siguiente" style={[styles.navBtn, { backgroundColor: c.backgroundElement }]}>
+          <Ionicons name="chevron-forward" size={26} color={canNext ? c.tint : c.border} />
         </Pressable>
       </View>
 
@@ -149,12 +149,13 @@ export function DateRangePicker({
 }
 
 const styles = StyleSheet.create({
+  navBtn: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   presets: { flexDirection: 'row', gap: 8, paddingBottom: Spacing.two },
   preset: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   monthHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   weekday: { width: `${100 / 7}%`, textAlign: 'center', paddingVertical: 4 },
   cell: { width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' },
-  day: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  day: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   quick: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: Spacing.two },
 });

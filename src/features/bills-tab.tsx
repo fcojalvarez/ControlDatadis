@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
 import { Select } from '@/components/select';
-import { Card, Disclosure, Empty, InlineLoading, KeyValue, Loading, Notice, SavedDataNotice, Screen, Stat, T } from '@/components/ui';
+import { Card, Empty, InlineLoading, KeyValue, Loading, Notice, SavedDataNotice, Screen, ShowMore, Stat, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { costWithTariff, computeBills, type Bill } from '@/lib/billing';
@@ -156,16 +156,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
 
           {/* ---------- Lista de facturas ---------- */}
           <Card title="Facturas">
-            {[...bills].reverse().slice(0, 4).map((b) => (
-              <BillRow key={b.start} b={b} />
-            ))}
-            {bills.length > 4 ? (
-              <Disclosure title={`Ver todas (${bills.length})`}>
-                {[...bills].reverse().slice(4).map((b) => (
-                  <BillRow key={b.start} b={b} />
-                ))}
-              </Disclosure>
-            ) : null}
+            <ShowMore initial={4} label={(n) => `Ver todas (${n})`} items={[...bills].reverse().map((b) => <BillRow key={b.start} b={b} />)} />
           </Card>
 
           {/* ---------- Comparador ---------- */}

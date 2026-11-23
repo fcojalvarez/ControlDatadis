@@ -91,7 +91,7 @@ export function OfflineDataCard({ supply }: { supply: SupplyRef }) {
         </>
       ) : null}
       <PauseBox pause={h.pause} />
-      <Pressable onPress={() => setOpen(true)} hitSlop={6} accessibilityRole="button">
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}>
         <T style={{ color: c.tint, fontWeight: '700' }}>{finished ? 'Ver meses guardados ›' : 'Ver qué falta ›'}</T>
       </Pressable>
 

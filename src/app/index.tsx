@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   homeIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tiles: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   tile: { flex: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 10, gap: 2 },
-  oldHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 4 },
+  oldHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 4 },
   oldRow: {
     flexDirection: 'row',
     alignItems: 'center',
