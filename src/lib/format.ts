@@ -19,7 +19,7 @@ export function fmtEur(n: number | null | undefined): string {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n);
 }
 
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+export const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MONTHS_LONG = [
   'enero',
   'febrero',
@@ -43,8 +43,28 @@ export function fmtDate(s: string | null | undefined): string {
   const m = s.match(/^(\d{4})[/-](\d{2})(?:[/-](\d{2}))?/);
   if (!m) return s;
   const [, y, mo, d] = m;
-  if (!d) return `${MONTHS[Number(mo) - 1]} ${y}`;
-  return `${Number(d)} ${MONTHS[Number(mo) - 1]} ${y}`;
+  if (!d) return `${MONTHS_SHORT[Number(mo) - 1]} ${y}`;
+  return `${Number(d)} ${MONTHS_SHORT[Number(mo) - 1]} ${y}`;
+}
+
+/** '2024/03/05' o '2024-03-05' -> '5 mar' */
+export function fmtDayMonth(s: string): string {
+  const m = s.match(/^\d{4}[/-](\d{2})[/-](\d{2})/);
+  return m ? `${Number(m[2])} ${MONTHS_SHORT[Number(m[1]) - 1]}` : s;
+}
+
+/** '2026/11/16' -> 'Lunes 16 nov 2026' (o sin año) */
+export function fmtWeekdayDate(s: string, withYear = true): string {
+  const m = s.match(/^(\d{4})[/-](\d{2})[/-](\d{2})/);
+  if (!m) return s;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}${withYear ? ` ${d.getFullYear()}` : ''}`;
+}
+
+/** Hora «HH:MM» de una marca de tiempo (ms) */
+export function fmtTime(ms: number): string {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 /** '2024-03' -> 'marzo 2024' */
@@ -58,7 +78,7 @@ export function fmtMonthLong(key: string): string {
 export function fmtMonthShort(key: string): string {
   const m = key.match(/^(\d{4})[/-](\d{2})/);
   if (!m) return key;
-  return `${MONTHS[Number(m[2]) - 1]} ${m[1].slice(2)}`;
+  return `${MONTHS_SHORT[Number(m[2]) - 1]} ${m[1].slice(2)}`;
 }
 
 /** '2024-03-05' -> '5/3' */
@@ -92,10 +112,6 @@ export function ym(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
 
-export function maskCups(cups: string): string {
-  if (cups.length < 10) return cups;
-  return `${cups.slice(0, 6)}…${cups.slice(-6)}`;
-}
 
 /**
  * Textos que Datadis da en MAYÚSCULAS, más legibles:

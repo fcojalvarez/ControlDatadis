@@ -71,7 +71,32 @@ function fileFor(key: string): File {
   return new File(dataDir(), `${safe}_${h.toString(16)}.json`);
 }
 
+/**
+ * Copia en memoria de lo último leído o guardado: al cambiar de pestaña no hace falta volver a
+ * leer y a interpretar el fichero. Se guarda el mismo objeto, así que las conversiones que se
+ * hagan sobre él (p. ej. normalizar un mes) también se reaprovechan.
+ */
+const MEMORY_MAX = 160;
+const memory = new Map<string, CacheEntry<unknown>>();
+
+function remember(key: string, entry: CacheEntry<unknown>) {
+  memory.delete(key);
+  memory.set(key, entry);
+  if (memory.size > MEMORY_MAX) memory.delete(memory.keys().next().value as string);
+}
+
 export async function cacheGet<T>(key: string): Promise<CacheEntry<T> | null> {
+  const mem = memory.get(key);
+  if (mem) {
+    remember(key, mem); // lo más usado se queda
+    return mem as CacheEntry<T>;
+  }
+  const entry = await readEntry<T>(key);
+  if (entry) remember(key, entry);
+  return entry;
+}
+
+async function readEntry<T>(key: string): Promise<CacheEntry<T> | null> {
   try {
     if (useFiles) {
       const f = fileFor(key);
@@ -110,8 +135,10 @@ async function writeEntry<T>(key: string, entry: CacheEntry<T>) {
 }
 
 export async function cacheSet<T>(key: string, data: T) {
+  const entry = { ts: Date.now(), data };
+  remember(key, entry);
   try {
-    await writeEntry(key, { ts: Date.now(), data });
+    await writeEntry(key, entry);
   } catch {
     // si no se puede guardar, se sigue con los datos en memoria
   }
@@ -119,6 +146,7 @@ export async function cacheSet<T>(key: string, data: T) {
 
 /** Borra todos los datos guardados de Datadis */
 export async function cacheClear() {
+  memory.clear();
   if (useFiles) {
     try {
       const dir = new Directory(Paths.document, DATA_DIR);
@@ -129,6 +157,24 @@ export async function cacheClear() {
   }
   const keys = await AsyncStorage.getAllKeys();
   await AsyncStorage.multiRemove(keys.filter((k) => k.startsWith(CACHE_PREFIX)));
+}
+
+/**
+ * Borra ficheros que ya no se usan: versiones anteriores guardaban las potencias máximas y la
+ * reactiva con las fechas en el nombre y cada mes dejaban un fichero nuevo.
+ */
+export function cachePruneObsolete() {
+  if (!useFiles) return;
+  try {
+    const dir = new Directory(Paths.document, DATA_DIR);
+    if (!dir.exists) return;
+    for (const f of dir.list()) {
+      if (f instanceof File && /^(maxp|react)_/.test(f.name) && !/_(24m|12m)_[0-9a-f]+\.json$/.test(f.name)) f.delete();
+      else if (f instanceof File && f.name.endsWith('.tmp')) f.delete(); // escrituras a medias
+    }
+  } catch {
+    // ignorado
+  }
 }
 
 /** Número de ficheros y espacio ocupado por los datos guardados */

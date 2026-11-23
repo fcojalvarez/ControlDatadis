@@ -3,11 +3,11 @@ import { StyleSheet, View } from 'react-native';
 
 import { BarChart, type BarDatum } from '@/components/bar-chart';
 import { Select } from '@/components/select';
-import { Card, Disclosure, InlineLoading, Notice, SavedDataNotice, Screen, Stepper, T } from '@/components/ui';
+import { Card, Disclosure, InlineLoading, KeyValue, Notice, SavedDataNotice, Screen, Stepper, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { MaxPowerReading } from '@/lib/consumption';
-import { WEEKDAYS, cap, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
+import { cap, fmtKW, fmtMonthLong, fmtMonthShort, fmtNum, fmtTime, fmtWeekdayDate, pad2 } from '@/lib/format';
 import { addMonths } from '@/lib/months';
 import { PERIOD_LABELS, type Period } from '@/lib/periods';
 
@@ -19,24 +19,9 @@ import type { SupplyRef } from './types';
 
 type View_ = 'mes' | 'semana' | 'dia';
 
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-/** «Martes 16 nov 2026» (o sin año) a partir de YYYY/MM/DD o YYYY-MM-DD */
-function dateText(date: string, withYear = true): string {
-  const m = date.match(/^(\d{4})[/-](\d{2})[/-](\d{2})/);
-  if (!m) return date;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}${withYear ? ` ${d.getFullYear()}` : ''}`;
-}
-
-function hhmm(t: number): string {
-  const d = new Date(t);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
 /** Cuándo fue un pico de la curva: «19:45 – 20:00» o «a las 20:00» si es el del contador */
 function peakTime(p: CurvePeak): string {
-  return p.measured ? `a las ${p.measuredTime}` : `${hhmm(p.start)} – ${hhmm(p.start + p.intervalMin * 60_000)}`;
+  return p.measured ? `a las ${p.measuredTime}` : `${fmtTime(p.start)} – ${fmtTime(p.start + p.intervalMin * 60_000)}`;
 }
 
 export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
@@ -140,7 +125,7 @@ function ExceedRow({ r, limit }: { r: MaxPowerReading; limit: number }) {
   return (
     <View style={[styles.row, { borderTopColor: c.border }]}>
       <View style={{ flex: 1 }}>
-        <T>{dateText(r.date)}</T>
+        <T>{fmtWeekdayDate(r.date)}</T>
         <T variant="small">
           a las {r.time} · {PERIOD_LABELS[r.period as Period]} · {fmtNum((r.kw / limit) * 100, 0)} % de tu potencia
         </T>
@@ -161,7 +146,7 @@ function TopPeakCard({ peak, limit, months }: { peak: MaxPowerReading; limit: nu
       </T>
       <T style={{ fontSize: 38, fontWeight: '800', color, lineHeight: 44 }}>{fmtKW(peak.kw, 2)}</T>
       <T style={{ fontWeight: '700' }}>
-        {dateText(peak.date)} · a las {peak.time}
+        {fmtWeekdayDate(peak.date)} · a las {peak.time}
       </T>
       <View style={styles.chips}>
         <View style={[styles.chip, { backgroundColor: c.backgroundElement }]}>
@@ -199,7 +184,7 @@ function MonthView({
       <View style={{ flex: 1 }}>
         <T>{cap(fmtMonthLong(m.month))}</T>
         <T variant="small">
-          {dateText(m.max.date, false)}, a las {m.max.time} · {PERIOD_LABELS[m.max.period as Period]}
+          {fmtWeekdayDate(m.max.date, false)}, a las {m.max.time} · {PERIOD_LABELS[m.max.period as Period]}
         </T>
       </View>
       <T style={{ fontWeight: '800', color: limitOf(m.max) && m.max.kw > limitOf(m.max) ? c.danger : c.text }}>{fmtKW(m.max.kw, 2)}</T>
@@ -214,7 +199,7 @@ function MonthView({
             label: fmtMonthShort(m.month).split(' ')[0],
             detail: `${cap(fmtMonthLong(m.month))} · ${fmtKW(m.max.kw, 2)}`,
             segments: [{ value: m.max.kw, color: colorFor(m.max.kw, limit) }],
-            note: `${dateText(m.max.date, false)} a las ${m.max.time} · ${PERIOD_LABELS[m.max.period as Period]}${limit ? ` · ${fmtNum((m.max.kw / limit) * 100, 0)} % de tu potencia` : ''}`,
+            note: `${fmtWeekdayDate(m.max.date, false)} a las ${m.max.time} · ${PERIOD_LABELS[m.max.period as Period]}${limit ? ` · ${fmtNum((m.max.kw / limit) * 100, 0)} % de tu potencia` : ''}`,
           };
         })}
         formatValue={(v) => fmtKW(v, 2)}
@@ -258,7 +243,7 @@ function DayWeekView({
   const use15 = rows15.length > 0;
   const rows = use15 ? rows15 : rows60;
   const interval = use15 ? 15 : 60;
-  const days = useMemo(() => dailyPeaks(rows, interval, measured), [rows, interval, measured]);
+  const days = useMemo(() => dailyPeaks(month, rows, interval, measured), [month, rows, interval, measured]);
   const weeks = useMemo(() => weeklyPeaks(days), [days]);
   const limitOf = (p: CurvePeak) => limitForPeriod(p.period, contracted);
   const loading = (q15.loading || q60.loading) && !rows.length;
@@ -281,11 +266,11 @@ function DayWeekView({
         label: `${Number(w.from.slice(8))}-${Number(w.to.slice(8))}`,
         detail: `Semana del ${Number(w.from.slice(8))} al ${Number(w.to.slice(8))} · ${fmtKW(w.kw, 2)}`,
         segments: [{ value: w.kw, color: colorFor(w.kw, limitOf(w)) }],
-        note: `${dateText(w.day, false)}, ${peakTime(w)} · ${PERIOD_LABELS[w.period]}${w.measured ? ' · medido por el contador' : ''}`,
+        note: `${fmtWeekdayDate(w.day, false)}, ${peakTime(w)} · ${PERIOD_LABELS[w.period]}${w.measured ? ' · medido por el contador' : ''}`,
       }))
     : days.map((d) => ({
         label: String(Number(d.key.slice(8))),
-        detail: `${dateText(d.key, false)} · ${fmtKW(d.kw, 2)}`,
+        detail: `${fmtWeekdayDate(d.key, false)} · ${fmtKW(d.kw, 2)}`,
         segments: [{ value: d.kw, color: colorFor(d.kw, limitOf(d)) }],
         note: `${peakTime(d)} · ${PERIOD_LABELS[d.period]}${limitOf(d) ? ` · ${fmtNum((d.kw / limitOf(d)) * 100, 0)} % de tu potencia` : ''}${d.measured ? ' · medido por el contador' : ''}`,
       }));
@@ -298,7 +283,7 @@ function DayWeekView({
         formatValue={(v) => fmtKW(v, 2)}
         unit="kW"
         referenceLines={refs}
-        idle={`Más alto: ${fmtKW(top.kw, 2)} · ${dateText(top.day, false)}`}
+        idle={`Más alto: ${fmtKW(top.kw, 2)} · ${fmtWeekdayDate(top.day, false)}`}
         idleSub={`${peakTime(top)} · ${PERIOD_LABELS[top.period]}`}
         minBarWidth={weekly ? 24 : 6}
         labelEvery={weekly ? 1 : undefined}
@@ -310,23 +295,14 @@ function DayWeekView({
           : 'Tu contador no da datos cada 15 minutos para este mes: es la media de la hora más alta de cada día, algo por debajo del pico real.'}
       </T>
       <View>
-        <Stat label={`Días por encima de tu potencia`} value={String(above)} color={above ? c.danger : undefined} />
-        <Stat label="Días por encima del 85 %" value={String(near)} color={near ? c.warning : undefined} />
-        {topHour !== undefined ? <Stat label="Hora en la que más picos hay" value={`${pad2(topHour)}:00 – ${pad2((topHour + 1) % 24)}:00`} /> : null}
+        <KeyValue k="Días por encima de tu potencia" v={<T style={{ fontWeight: '800', color: above ? c.danger : c.text }}>{above}</T>} />
+        <KeyValue k="Días por encima del 85 %" v={<T style={{ fontWeight: '800', color: near ? c.warning : c.text }}>{near}</T>} />
+        {topHour !== undefined ? <KeyValue k="Hora en la que más picos hay" v={`${pad2(topHour)}:00 – ${pad2((topHour + 1) % 24)}:00`} /> : null}
       </View>
     </View>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
-  const c = useTheme();
-  return (
-    <View style={[styles.row, { borderTopColor: c.border }]}>
-      <T style={{ flex: 1 }}>{label}</T>
-      <T style={{ fontWeight: '800', color: color ?? c.text }}>{value}</T>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   kicker: { fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },

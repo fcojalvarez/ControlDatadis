@@ -8,7 +8,7 @@ import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
-import { ZERO_COST, flatPrice, normalize, pctChange, summarize } from '@/lib/consumption';
+import { ZERO_COST, flatPrice, pctChange, readingsOf, summarize } from '@/lib/consumption';
 import { costOfRange } from '@/lib/billing';
 import { contractedOnFn } from '@/lib/contracts';
 import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
@@ -56,7 +56,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const periodColors: Record<Period, string> = { P1: c.p1, P2: c.p2, P3: c.p3 };
 
   const data = useMemo(() => {
-    const read = (keys: string[]) => normalize(keys.flatMap((k) => q.months[k] ?? []), 60);
+    const read = (keys: string[]) => readingsOf(q.months, keys, 60);
     const curR = read([cur]);
     const curS = summarize(curR, 60);
     const prevS = summarize(read([prev]), 60);
@@ -73,7 +73,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   // Mismo cálculo que Facturas (tarifa y potencia de cada día, meses naturales)
   const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
   const costs = useMemo(() => {
-    const read = (keys: string[]) => normalize(keys.flatMap((k) => q.months[k] ?? []), 60);
+    const read = (keys: string[]) => readingsOf(q.months, keys, 60);
     const end = (k: string) => `${k}-${String(daysInMonth(k)).padStart(2, '0')}`;
     const keys = data.last12Keys;
     return {

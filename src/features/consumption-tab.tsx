@@ -10,27 +10,13 @@ import { BarChart, SplitBar, type BarDatum } from '@/components/bar-chart';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { BottomSheet } from '@/components/select';
 import { Heatmap } from '@/components/heatmap';
-import {
-  Card,
-  DataTable,
-  Delta,
-  Disclosure,
-  Empty,
-  InlineLoading,
-  KeyValue,
-  Loading,
-  SavedDataNotice,
-  Screen,
-  Stepper,
-  T,
-  type Column,
-} from '@/components/ui';
+import { Card, DataTable, Delta, Disclosure, Empty, InlineLoading, KeyValue, Loading, SavedDataNotice, Screen, Stat, Stepper, T, type Column } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import {
   flatPrice,
-  normalize,
+  readingsOf,
   normalizeMaxPower,
   pctChange,
   readingsToCsv,
@@ -39,20 +25,7 @@ import {
   type MaxPowerReading,
   type Reading,
 } from '@/lib/consumption';
-import {
-  WEEKDAYS,
-  WEEKDAYS_SHORT,
-  cap,
-  fmtDate,
-  fmtDayShort,
-  fmtEur,
-  fmtKW,
-  fmtKWh,
-  fmtMonthLong,
-  fmtMonthShort,
-  fmtNum,
-  pad2,
-} from '@/lib/format';
+import { WEEKDAYS, WEEKDAYS_SHORT, cap, fmtDate, fmtDayMonth, fmtDayShort, fmtEur, fmtKW, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, fmtTime, pad2 } from '@/lib/format';
 import { costOfRange } from '@/lib/billing';
 import { contractedOnFn, currentContract } from '@/lib/contracts';
 import { maxPowerPeriod, PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
@@ -73,7 +46,7 @@ import {
 } from './period';
 import { useContract, useMaxPower } from './queries';
 import { useSupplyTariffs } from './tariffs';
-import { rangeMonths, type SupplyRef } from './types';
+import type { SupplyRef } from './types';
 
 type ChartView = 'dias' | 'meses' | 'horas' | 'semana';
 type Unit = 'kwh' | 'kw';
@@ -122,8 +95,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const limitFor = (p: Period) => (p === 'P3' ? p2 : p1);
 
   // Picos de 15 min medidos por el contador (uno por mes y periodo) de los últimos 2 años
-  const range24 = useMemo(() => rangeMonths('24m', supply), [supply]);
-  const maxp = useMaxPower(supply, range24.start, range24.end);
+  const maxp = useMaxPower(supply);
   const measured = useMemo(() => {
     const byDay = new Map<string, MaxPowerReading>();
     const byMonth = new Map<string, MaxPowerReading>();
@@ -138,7 +110,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const intervalMin = mt === 1 ? 15 : 60;
   const toKW = 60 / intervalMin;
   const readings = useMemo(
-    () => normalize(win.flatMap((k) => q.months[k] ?? []), intervalMin).filter((x) => x.day >= range.from && x.day <= range.to),
+    () => readingsOf(q.months, win, intervalMin, range.from, range.to),
     [q.months, win, intervalMin, range],
   );
   const s = useMemo(() => summarize(readings, intervalMin), [readings, intervalMin]);
@@ -146,8 +118,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   // Mismo cálculo que Facturas: tarifa y potencia de cada día
   const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
   const costR = useMemo(
-    () => costOfRange(normalize(win.flatMap((k) => q.months[k] ?? []), 60).filter((x) => x.day >= range.from && x.day <= range.to), tariffCfg.history, contractedOn, range.from, range.to),
-    [q.months, win, range, tariffCfg.history, contractedOn],
+    () => costOfRange(readings, tariffCfg.history, contractedOn, range.from, range.to),
+    [readings, range, tariffCfg.history, contractedOn],
   );
   const cost = costR.cost;
   const singleTariff = costR.tariffNames.length <= 1;
@@ -173,9 +145,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     return comps
       .filter((cmp) => monthsOfRange(cmp.range).every((k) => k < bounds.min || q.months[k] !== undefined))
       .map((cmp) => {
-        const prev = normalize(monthsOfRange(cmp.range).flatMap((k) => q.months[k] ?? []), intervalMin).filter(
-          (x) => x.day >= cmp.range.from && x.day <= cmp.range.to,
-        );
+        const prev = readingsOf(q.months, monthsOfRange(cmp.range), intervalMin, cmp.range.from, cmp.range.to);
         const prevTotal = prev.reduce((acc, x) => acc + x.kwh, 0);
         const prevDays = new Set(prev.map((x) => x.day)).size;
         return { label: cmp.label, pct: prev.length && prevDays >= s.days * 0.9 ? pctChange(s.total, prevTotal) : null, prevTotal };
@@ -267,7 +237,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               return {
                 label: isMonth ? String(Number(d.key.slice(8))) : fmtDayShort(d.key),
                 detail: `${WEEKDAYS[weekdayOf(d.key)]} ${fmtDate(d.key)}`,
-                segments: [{ value: pk?.kw ?? 0, color: pk ? powerColor(pk.kw, pk.period) : c.tint, name: `Curva ${pk ? hhmm(pk.start) : ''}` }],
+                segments: [{ value: pk?.kw ?? 0, color: pk ? powerColor(pk.kw, pk.period) : c.tint, name: `Curva ${pk ? fmtTime(pk.start) : ''}` }],
                 note: measuredNote(m),
               };
             }),
@@ -350,7 +320,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
         ? {
             data: dayReadings.map((r) => ({
               label: new Date(r.start).getMinutes() === 0 ? String(new Date(r.start).getHours()) : '',
-              detail: `${hhmm(r.start)} – ${hhmm(r.start + intervalMin * 60_000)} · ${PERIOD_LABELS[r.period]}`,
+              detail: `${fmtTime(r.start)} – ${fmtTime(r.start + intervalMin * 60_000)} · ${PERIOD_LABELS[r.period]}`,
               segments: [{ value: r.kwh, color: periodColors[r.period] }],
               note: r.real ? undefined : 'Lectura estimada',
             })),
@@ -362,7 +332,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
         : {
             data: dayReadings.map((r, i) => ({
               label: new Date(r.start).getMinutes() === 0 ? String(new Date(r.start).getHours()) : '',
-              detail: `${hhmm(r.start)} – ${hhmm(r.start + intervalMin * 60_000)}`,
+              detail: `${fmtTime(r.start)} – ${fmtTime(r.start + intervalMin * 60_000)}`,
               segments: [{ value: r.kwh * toKW, color: powerColor(r.kwh * toKW, r.period), name: 'Media' }],
               note: i === measuredIdx ? measuredNote(dayMeasured) : undefined,
             })),
@@ -397,7 +367,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     if (day >= range.from && day <= range.to && (!measuredMax || m.kw > measuredMax.kw)) measuredMax = m;
   }
   const measuredLimit = measuredMax ? (maxPowerPeriod(measuredMax.period) === 'P3' ? p2 : p1) : 0;
-  const measuredWhen = measuredMax ? `${dayMonth(measuredMax.date)} a las ${measuredMax.time}` : '';
+  const measuredWhen = measuredMax ? `${fmtDayMonth(measuredMax.date)} a las ${measuredMax.time}` : '';
   const curveTop = Math.max(0, ...curvePeaks.byHour);
   const avgLabel = mt === 1 ? 'Media de 15 min más alta' : 'Media de 1 h más alta';
   const chartIdleSub = unit === 'kw' && measuredMax ? `${avgLabel}: ${fmtKW(curveTop, 2)}` : undefined;
@@ -419,7 +389,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     </Pressable>
   );
   // Fechas cortas («2 nov») si todo el rango es del mismo año
-  const shortDate = (k: string) => (range.from.slice(0, 4) === range.to.slice(0, 4) ? dayMonth(k) : fmtDate(k));
+  const shortDate = (k: string) => (range.from.slice(0, 4) === range.to.slice(0, 4) ? fmtDayMonth(k) : fmtDate(k));
   const curveMax = Math.max(0, ...[...curvePeaks.byDay.values()].map((p) => p.kw));
 
   return (
@@ -473,19 +443,19 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               </View>
             </View>
             <View style={styles.miniRow}>
-              {!isDay ? <Mini label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} /> : null}
+              {!isDay ? <Stat label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} /> : null}
               {nDays > 62 ? (
-                <Mini label="Media mensual" value={fmtKWh(s.monthly.length ? s.total / s.monthly.length : 0, 0)} />
+                <Stat label="Media mensual" value={fmtKWh(s.monthly.length ? s.total / s.monthly.length : 0, 0)} />
               ) : null}
               {measuredMax ? (
-                <Mini
+                <Stat
                   label="Pico medido"
                   value={fmtKW(measuredMax.kw, 2)}
                   sub={measuredWhen.replace(' a las', '')}
                   color={measuredLimit && measuredMax.kw > measuredLimit ? c.danger : undefined}
                 />
               ) : (
-                <Mini label={mt === 1 ? 'Máx. 15 min' : 'Máx. 1 h'} value={fmtKW(curveMax, 1)} color={p1 && curveMax > p1 ? c.danger : undefined} />
+                <Stat label={mt === 1 ? 'Máx. 15 min' : 'Máx. 1 h'} value={fmtKW(curveMax, 1)} color={p1 && curveMax > p1 ? c.danger : undefined} />
               )}
             </View>
           </Card>
@@ -614,9 +584,9 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               title="Autoconsumo"
               info="Generada: lo que han producido tus placas. Excedentes: lo que vertiste a la red (te lo compensan). Autosuficiencia: parte de tu consumo cubierta por tus placas.">
               <View style={styles.miniRow}>
-                <Mini label="Generada" value={fmtKWh(s.generation, 0)} color={c.generation} />
-                <Mini label="Excedentes" value={fmtKWh(s.surplus, 0)} color={c.surplus} />
-                <Mini
+                <Stat label="Generada" value={fmtKWh(s.generation, 0)} color={c.generation} />
+                <Stat label="Excedentes" value={fmtKWh(s.surplus, 0)} color={c.surplus} />
+                <Stat
                   label="Autosuficiencia"
                   value={`${fmtNum(s.selfConsumption + s.total > 0 ? (s.selfConsumption / (s.selfConsumption + s.total)) * 100 : 0, 0)} %`}
                 />
@@ -646,7 +616,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
           {/* ---------- Detalles ---------- */}
           <Card title="Detalles">
-            {s.peak && <KeyValue k="Hora de más consumo" v={`${shortDate(s.peak.day)}, ${hhmm(s.peak.start)}`} hint={fmtKWh(s.peak.kwh, 2)} />}
+            {s.peak && <KeyValue k="Hora de más consumo" v={`${shortDate(s.peak.day)}, ${fmtTime(s.peak.start)}`} hint={fmtKWh(s.peak.kwh, 2)} />}
             {s.maxDay && <KeyValue k="Día de más consumo" v={shortDate(s.maxDay.key)} hint={fmtKWh(s.maxDay.total, 1)} />}
             {s.minDay && <KeyValue k="Día de menos consumo" v={shortDate(s.minDay.key)} hint={fmtKWh(s.minDay.total, 1)} />}
             <KeyValue k="Siempre encendido" v={fmtKW(s.baseLoadKW, 2)} hint={`≈ ${fmtEur(s.baseLoadKW * 24 * 365 * flatPrice(tariff.energy))}/año`} />
@@ -691,32 +661,6 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   );
 }
 
-const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-/** «16 nov» a partir de YYYY/MM/DD o YYYY-MM-DD */
-function dayMonth(date: string): string {
-  const m = date.match(/^\d{4}[/-](\d{2})[/-](\d{2})/);
-  return m ? `${Number(m[2])} ${MONTH_ABBR[Number(m[1]) - 1]}` : date;
-}
-
-function Mini({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  const c = useTheme();
-  return (
-    <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
-      <T variant="small" numberOfLines={1} adjustsFontSizeToFit>
-        {label}
-      </T>
-      <T style={{ fontWeight: '800', fontSize: 16, color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </T>
-      {sub ? (
-        <T variant="small" numberOfLines={1}>
-          {sub}
-        </T>
-      ) : null}
-    </View>
-  );
-}
 
 // ---------- Tablas ----------
 
@@ -753,7 +697,7 @@ function BucketTable({
 function ReadingsTable({ readings, intervalMin }: { readings: Reading[]; intervalMin: number }) {
   const c = useTheme();
   const cols: Column<Reading>[] = [
-    { title: 'Hora', render: (r) => `${hhmm(r.start)}-${hhmm(r.start + intervalMin * 60_000)}`, width: 92 },
+    { title: 'Hora', render: (r) => `${fmtTime(r.start)}-${fmtTime(r.start + intervalMin * 60_000)}`, width: 92 },
     { title: 'kWh', render: (r) => fmtNum(r.kwh, 3) },
     { title: 'kW', render: (r) => fmtNum(r.kwh * (60 / intervalMin), 2) },
     { title: 'Periodo', render: (r) => PERIOD_LABELS[r.period], color: (r) => ({ P1: c.p1, P2: c.p2, P3: c.p3 })[r.period] },
@@ -766,7 +710,7 @@ function PowerTable({ days, curve, measured }: { days: string[]; curve: Map<stri
   const cols: Column<string>[] = [
     { title: 'Día', render: (d) => `${WEEKDAYS_SHORT[weekdayOf(d)]} ${fmtDayShort(d)}` },
     { title: 'Curva kW', render: (d) => fmtNum(curve.get(d)?.kw ?? 0, 2), width: 70 },
-    { title: 'Hora', render: (d) => (curve.get(d) ? hhmm(curve.get(d)!.start) : '—') },
+    { title: 'Hora', render: (d) => (curve.get(d) ? fmtTime(curve.get(d)!.start) : '—') },
     { title: 'Contador', render: (d) => (measured.get(d) ? `${fmtNum(measured.get(d)!.kw, 2)} ${measured.get(d)!.time}` : ''), width: 96 },
   ];
   return <DataTable columns={cols} rows={days} />;
@@ -779,10 +723,6 @@ function weekdayOf(dayKey: string): number {
   return (new Date(y, m - 1, d).getDay() + 6) % 7;
 }
 
-function hhmm(ms: number): string {
-  const d = new Date(ms);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
 
 function avg(a: number[]): number {
   return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
@@ -791,7 +731,6 @@ function avg(a: number[]): number {
 const styles = StyleSheet.create({
   split: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.two },
   miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
-  mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
   periodRow: { flexDirection: 'row' },
   chartHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   optsBtn: { borderRadius: 10, padding: 8 },

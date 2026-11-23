@@ -10,13 +10,13 @@
 import { useEffect, useMemo } from 'react';
 
 import { useSession } from '@/context/session';
-import { normalize, normalizeMaxPower, type CompactReading, type MaxPowerReading, type Reading } from '@/lib/consumption';
+import { normalizeMaxPower, normalizeMonth, type CompactReading, type MaxPowerReading, type Reading } from '@/lib/consumption';
 import { currentContract } from '@/lib/contracts';
 import { maxPowerPeriod, type Period } from '@/lib/periods';
 import { setJSON } from '@/lib/storage';
 
 import { useContract, useMaxPower } from './queries';
-import { rangeMonths, type SupplyRef } from './types';
+import type { SupplyRef } from './types';
 
 /** Potencia contratada que aplica a un periodo (P1 en punta y llano, P2 en valle) */
 export function limitForPeriod(period: Period | string, contracted: number[]): number {
@@ -30,8 +30,7 @@ export type MonthPeak = { month: string; max: MaxPowerReading; byPeriod: Partial
 /** Picos medidos por el contador en los últimos 24 meses */
 export function useMeasuredPeaks(supply: SupplyRef) {
   const { username } = useSession();
-  const { start, end } = useMemo(() => rangeMonths('24m', supply), [supply]);
-  const q = useMaxPower(supply, start, end);
+  const q = useMaxPower(supply);
   const contract = useContract(supply);
   const contracted = useMemo(() => currentContract(contract.data?.contracts)?.contractedPowerkW ?? [], [contract.data]);
 
@@ -82,10 +81,10 @@ export type CurvePeak = {
 /**
  * Pico de cada día a partir de la curva de consumo (y del pico del contador si ese día fue mayor).
  */
-export function dailyPeaks(rows: CompactReading[], intervalMin: number, measured: MaxPowerReading[]): CurvePeak[] {
+export function dailyPeaks(month: string, rows: CompactReading[], intervalMin: number, measured: MaxPowerReading[]): CurvePeak[] {
   const toKW = 60 / intervalMin;
   const byDay = new Map<string, CurvePeak>();
-  const readings: Reading[] = normalize(rows, intervalMin);
+  const readings: Reading[] = normalizeMonth(month, rows, intervalMin);
   for (const r of readings) {
     const kw = r.kwh * toKW;
     const cur = byDay.get(r.day);

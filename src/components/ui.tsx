@@ -199,44 +199,26 @@ export function Card({
   );
 }
 
-export function Row({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.row, style]}>{children}</View>;
-}
 
-export function SectionTitle({ children }: { children: string }) {
-  return (
-    <T variant="label" style={{ marginTop: Spacing.two, marginLeft: Spacing.one }}>
-      {children}
-    </T>
-  );
-}
 
 // ---------- Datos ----------
 
-export function Stat({
-  label,
-  value,
-  sub,
-  color,
-  delta,
-  invertDelta,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  color?: string;
-  delta?: { pct: number | null; label: string };
-  invertDelta?: boolean;
-}) {
+/** Dato pequeño en una caja (p. ej. «Media diaria · 10,7 kWh») */
+export function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   const c = useTheme();
   return (
     <View style={[styles.stat, { backgroundColor: c.backgroundElement }]}>
-      <T variant="label">{label}</T>
-      <T variant="value" color={color} numberOfLines={1} adjustsFontSizeToFit>
+      <T variant="small" numberOfLines={1} adjustsFontSizeToFit>
+        {label}
+      </T>
+      <T style={{ fontWeight: '800', fontSize: 16, color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </T>
-      {delta ? <Delta pct={delta.pct} label={delta.label} invert={invertDelta} /> : null}
-      {sub ? <T variant="small">{sub}</T> : null}
+      {sub ? (
+        <T variant="small" numberOfLines={1}>
+          {sub}
+        </T>
+      ) : null}
     </View>
   );
 }
@@ -385,74 +367,7 @@ export function Button({
   );
 }
 
-export function Segmented<V extends string | number>({
-  options,
-  value,
-  onChange,
-  style,
-}: {
-  options: { value: V; label: string }[];
-  value: V;
-  onChange: (v: V) => void;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const c = useTheme();
-  return (
-    <View style={[styles.segmented, { backgroundColor: c.backgroundElement }, style]}>
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <Pressable
-            key={String(o.value)}
-            onPress={() => onChange(o.value)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            style={[styles.segment, active && { backgroundColor: c.card, borderColor: c.border, borderWidth: 1 }]}>
-            <T
-              numberOfLines={1}
-              style={{ fontSize: 14, color: active ? c.text : c.textSecondary, fontWeight: active ? '700' : '500' }}>
-              {o.label}
-            </T>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
-/** Pestañas con subrayado, desplazables si no caben */
-export function TabBar<V extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: V; label: string }[];
-  value: V;
-  onChange: (v: V) => void;
-}) {
-  const c = useTheme();
-  return (
-    <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border, backgroundColor: c.background }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
-        {options.map((o) => {
-          const active = o.value === value;
-          return (
-            <Pressable
-              key={o.value}
-              onPress={() => onChange(o.value)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              style={[styles.tab, { borderBottomColor: active ? c.tint : 'transparent' }]}>
-              <T style={{ fontSize: 14, fontWeight: active ? '700' : '500', color: active ? c.tint : c.textSecondary }}>
-                {o.label}
-              </T>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
-}
 
 export function Chips<V extends string | number>({
   options,
@@ -639,17 +554,6 @@ export function SavedDataNotice({
   );
 }
 
-export function UpdatedAt({ ts, loading }: { ts: number | null; loading?: boolean }) {
-  if (loading && ts) return <T variant="small">Actualizando…</T>;
-  if (!ts) return null;
-  const d = new Date(ts);
-  return (
-    <T variant="small" style={{ textAlign: 'center' }}>
-      Datos descargados el {d.toLocaleDateString('es-ES')} a las{' '}
-      {d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} · desliza hacia abajo para actualizar
-    </T>
-  );
-}
 
 const styles = StyleSheet.create({
   screen: { padding: Spacing.three, paddingBottom: Spacing.five * 2, alignItems: 'center' },
@@ -659,7 +563,7 @@ const styles = StyleSheet.create({
   infoBtn: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   infoBox: { borderRadius: 10, padding: Spacing.two + 2 },
   row: { flexDirection: 'row', gap: Spacing.two, flexWrap: 'wrap' },
-  stat: { flexGrow: 1, flexBasis: '45%', borderRadius: 14, padding: 14, gap: 3 },
+  stat: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
   kv: {
     flexDirection: 'row',
     paddingVertical: 10,

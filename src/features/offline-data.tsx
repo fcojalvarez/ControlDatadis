@@ -4,10 +4,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ProgressBar } from '@/components/bar-chart';
 import { BottomSheet } from '@/components/select';
-import { Card, T } from '@/components/ui';
+import { Card, KeyValue, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { cap, fmtMonthLong, pad2 } from '@/lib/format';
+import { MONTHS_SHORT, cap, fmtMonthLong, pad2 } from '@/lib/format';
 
 import { addMonths, monthRange, useConsumptionMonths, type MonthState } from './consumption-data';
 import { PRIORITY } from './consumption-sync';
@@ -43,7 +43,6 @@ function whenText(t: number): string {
   return `el ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${hm}`;
 }
 
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 function minutesLeft(t: number): string {
   const m = Math.max(1, Math.round((t - Date.now()) / 60_000));
@@ -100,14 +99,14 @@ export function OfflineDataCard({ supply }: { supply: SupplyRef }) {
         <View style={{ gap: Spacing.two }}>
           <PauseBox pause={h.pause} long />
           <View>
-            <Row label="Guardados" value={`${h.done} de ${h.total} meses`} />
+            <KeyValueColored label="Guardados" value={`${h.done} de ${h.total} meses`} />
             {h.status.some((x) => x.state === 'running') ? (
-              <Row label="Descargando" value={h.next ? fmtMonthLong(h.next) : '—'} />
+              <KeyValueColored label="Descargando" value={h.next ? fmtMonthLong(h.next) : '—'} />
             ) : (
-              <Row label="Siguiente" value={h.next ? fmtMonthLong(h.next) : '—'} />
+              <KeyValueColored label="Siguiente" value={h.next ? fmtMonthLong(h.next) : '—'} />
             )}
             {waiting.length ? (
-              <Row
+              <KeyValueColored
                 label="A la espera"
                 value={`${waiting.length} · la primera ${whenText(Math.min(...waiting.map((x) => ('at' in x ? x.at : 0))))}`}
                 color={c.warning}
@@ -153,15 +152,6 @@ function PauseBox({ pause, long }: { pause: { until: number; kind: 'limit' | 'do
   );
 }
 
-function Row({ label, value, color }: { label: string; value: string; color?: string }) {
-  const c = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border }}>
-      <T>{label}</T>
-      <T style={{ fontWeight: '700', color: color ?? c.text, flexShrink: 1, textAlign: 'right' }}>{value}</T>
-    </View>
-  );
-}
 
 /** Rejilla de meses por año con colores según su estado */
 function MonthGrid({ status }: { status: MonthState[] }) {
@@ -230,6 +220,11 @@ function MonthGrid({ status }: { status: MonthState[] }) {
       </View>
     </View>
   );
+}
+
+/** Fila de dato con el valor en color opcional */
+function KeyValueColored({ label, value, color }: { label: string; value: string; color?: string }) {
+  return <KeyValue k={label} v={<T style={{ fontWeight: '700', color }}>{value}</T>} />;
 }
 
 const styles = StyleSheet.create({

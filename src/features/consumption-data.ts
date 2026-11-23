@@ -86,8 +86,10 @@ export function useConsumptionMonths(
       const distributorErrors: DistributorError[] = [];
       const toFetch: MonthKey[] = [];
       let oldest: number | null = null;
-      for (const m of list) {
-        const c = await cacheGet<MonthEntry>(prefix + m);
+      // Todos los meses a la vez (antes se leían uno detrás de otro)
+      const saved = await Promise.all(list.map((m) => cacheGet<MonthEntry>(prefix + m)));
+      for (const [i, m] of list.entries()) {
+        const c = saved[i];
         if (c && isFrozenMonth(c.data.rows)) {
           // Guardado antes de detectar el fallo de la distribuidora: no vale, se vuelve a pedir
           toFetch.push(m);

@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
+
 import type { ContractDetail, DistributorError, MaxPowerRaw, ReactiveRow } from '@/api/datadis';
 import { toYearMonth } from '@/api/datadis';
 import { useSession } from '@/context/session';
 import { DAY, HOUR, useCachedQuery } from '@/hooks/use-cached-query';
 
-import { monthsBetween, type SupplyRef } from './types';
+import { monthsBetween, rangeMonths, type SupplyRef } from './types';
 
 /** TTL según si el rango incluye el mes en curso (datos que aún cambian) o no. */
 function ttlFor(end: Date) {
@@ -79,11 +81,16 @@ export async function fetchRanged<T>(
   return { rows, errors, okMonths };
 }
 
-export function useMaxPower(supply: SupplyRef, start: Date, end: Date) {
+/**
+ * Potencias máximas de los últimos 24 meses. La clave no lleva fechas: así no se crea un fichero
+ * nuevo cada mes, y mientras se actualiza se sigue viendo lo guardado.
+ */
+export function useMaxPower(supply: SupplyRef) {
   const { client, settings, username } = useSession();
   const nif = settings.activeNif ?? undefined;
+  const { start, end } = useMemo(() => rangeMonths('24m', supply), [supply]);
   return useCachedQuery<{ rows: MaxPowerRaw[]; errors: DistributorError[] }>(
-    `maxp:${username}:${nif ?? 'me'}:${supply.cups}:${toYearMonth(start)}:${toYearMonth(end)}`,
+    `maxp:${username}:${nif ?? 'me'}:${supply.cups}:24m`,
     () =>
       fetchRanged(start, end, (s, e) =>
         client.getMaxPower({
@@ -99,11 +106,13 @@ export function useMaxPower(supply: SupplyRef, start: Date, end: Date) {
   );
 }
 
-export function useReactive(supply: SupplyRef, start: Date, end: Date) {
+/** Energía reactiva de los últimos 12 meses (clave sin fechas, como las potencias máximas) */
+export function useReactive(supply: SupplyRef) {
   const { client, settings, username } = useSession();
   const nif = settings.activeNif ?? undefined;
+  const { start, end } = useMemo(() => rangeMonths('12m', supply), [supply]);
   return useCachedQuery<{ rows: ReactiveRow[]; code?: string; codeDesc?: string; errors: DistributorError[] }>(
-    `react:${username}:${nif ?? 'me'}:${supply.cups}:${toYearMonth(start)}:${toYearMonth(end)}`,
+    `react:${username}:${nif ?? 'me'}:${supply.cups}:12m`,
     () =>
       client.getReactive({
         cups: supply.cups,

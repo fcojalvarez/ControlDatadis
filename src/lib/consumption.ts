@@ -18,18 +18,21 @@ export type Reading = {
 };
 
 /** Formato compacto para guardar en caché */
-export type CompactReading = [string, string, number, 0 | 1, number, number, number];
+/**
+ * Lectura guardada: [fecha, hora, kWh, real (1) o estimada (0), excedentes, generación, autoconsumo].
+ * Los tres últimos solo se guardan si no son todos 0 (sin placas, casi un tercio menos de espacio).
+ */
+export type CompactReading = [string, string, number, 0 | 1, number?, number?, number?];
 
 export function compact(rows: ConsumptionRaw[]): CompactReading[] {
-  return rows.map((r) => [
-    r.date,
-    r.time,
-    r.consumptionKWh ?? 0,
-    /real/i.test(r.obtainMethod ?? '') ? 1 : 0,
-    r.surplusEnergyKWh ?? 0,
-    r.generationEnergyKWh ?? 0,
-    r.selfConsumptionEnergyKWh ?? 0,
-  ]);
+  return rows.map((r) => {
+    const base: CompactReading = [r.date, r.time, r.consumptionKWh ?? 0, /real/i.test(r.obtainMethod ?? '') ? 1 : 0];
+    const surplus = r.surplusEnergyKWh ?? 0;
+    const generation = r.generationEnergyKWh ?? 0;
+    const self = r.selfConsumptionEnergyKWh ?? 0;
+    if (surplus || generation || self) base.push(surplus, generation, self);
+    return base;
+  });
 }
 
 function parseDateTime(date: string, time: string): Date | null {
@@ -78,6 +81,48 @@ export function normalize(rows: CompactReading[], intervalMin: number): Reading[
     });
   }
   out.sort((a, b) => a.start - b.start);
+  return out;
+}
+
+/**
+ * Lecturas normalizadas de un mes guardado, con caché: cada mes se convierte una sola vez aunque
+ * lo pidan varias pantallas o gráficas (se reconoce por el propio array guardado). Se descartan
+ * los intervalos que empiezan en otro mes (p. ej. la fila «00:00» del día 1), que ya vienen en el
+ * fichero de ese otro mes.
+ */
+const monthCache = new WeakMap<CompactReading[], Map<number, Reading[]>>();
+
+export function normalizeMonth(month: string, rows: CompactReading[], intervalMin: number): Reading[] {
+  let byInterval = monthCache.get(rows);
+  if (!byInterval) {
+    byInterval = new Map();
+    monthCache.set(rows, byInterval);
+  }
+  let out = byInterval.get(intervalMin);
+  if (!out) {
+    out = normalize(rows, intervalMin).filter((r) => r.month === month);
+    byInterval.set(intervalMin, out);
+  }
+  return out;
+}
+
+/** Lecturas de varios meses (en orden) y, opcionalmente, solo entre dos días (YYYY-MM-DD) */
+export function readingsOf(
+  months: Record<string, CompactReading[]>,
+  keys: string[],
+  intervalMin: number,
+  from?: string,
+  to?: string,
+): Reading[] {
+  const out: Reading[] = [];
+  for (const k of [...keys].sort()) {
+    const rows = months[k];
+    if (!rows?.length) continue;
+    for (const r of normalizeMonth(k, rows, intervalMin)) {
+      if ((from && r.day < from) || (to && r.day > to)) continue;
+      out.push(r);
+    }
+  }
   return out;
 }
 

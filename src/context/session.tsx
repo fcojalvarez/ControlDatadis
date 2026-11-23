@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { DatadisClient, login as apiLogin } from '@/api/datadis';
 import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
 import type { SupplyTariffs } from '@/lib/tariff';
-import { clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
+import { cachePruneObsolete, clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
 
 type Status = 'loading' | 'loggedOut' | 'loggedIn';
 
@@ -88,6 +88,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ]);
       // Si Datadis limitó las consultas en una sesión anterior, se respeta la pausa
       client.restoreCooldown(cooldown.until, cooldown.step);
+      // Limpieza de ficheros que dejaron versiones anteriores
+      cachePruneObsolete();
       setSettings({ ...DEFAULT_SETTINGS, ...s, prices: { ...DEFAULT_PRICES, ...s.prices }, tariffs: s.tariffs ?? {}, summaryLayout: { ...DEFAULT_SETTINGS.summaryLayout, ...s.summaryLayout } });
       if (saved) {
         // El token se obtiene de forma perezosa en la primera consulta

@@ -7,13 +7,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 
 import { useReactive } from './queries';
-import { rangeMonths, type SupplyRef } from './types';
+import type { SupplyRef } from './types';
 
 /** Sección de energía reactiva (se muestra al final de la pestaña Potencia) */
 export function ReactiveSection({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
-  const { start, end } = useMemo(() => rangeMonths('12m', supply), [supply]);
-  const q = useReactive(supply, start, end);
+  const q = useReactive(supply);
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);
   const palette = [c.p1, c.p2, c.p3, c.surplus, c.generation, c.textSecondary];
 

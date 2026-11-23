@@ -1,4 +1,4 @@
-import { cap, fmtMonthLong, ymd } from '@/lib/format';
+import { MONTHS_SHORT, cap, fmtMonthLong, ymd } from '@/lib/format';
 
 import { addMonths, monthKey, monthRange, type MonthKey } from '@/lib/months';
 import type { SupplyRef } from './types';
@@ -96,7 +96,6 @@ export function rangeKind(r: DateRange): RangeKind {
   return 'custom';
 }
 
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const WEEKDAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 function shortDay(k: string, withYear: boolean): string {

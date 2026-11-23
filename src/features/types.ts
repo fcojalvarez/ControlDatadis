@@ -18,15 +18,6 @@ export const POINT_TYPES: Record<number, string> = {
 
 export type RangeKey = 'thisMonth' | 'lastMonth' | '3m' | '6m' | '12m' | '24m';
 
-export const RANGE_OPTIONS: { value: RangeKey; label: string }[] = [
-  { value: 'thisMonth', label: 'Este mes' },
-  { value: 'lastMonth', label: 'Mes pasado' },
-  { value: '3m', label: '3 meses' },
-  { value: '6m', label: '6 meses' },
-  { value: '12m', label: '12 meses' },
-  { value: '24m', label: '24 meses' },
-];
-
 /** Devuelve el primer y último mes (Date día 1) del rango, recortado a la vigencia del suministro. */
 export function rangeMonths(range: RangeKey, supply?: SupplyRef): { start: Date; end: Date } {
   const now = new Date();

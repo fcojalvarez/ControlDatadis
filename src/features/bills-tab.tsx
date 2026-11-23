@@ -5,22 +5,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
 import { Select } from '@/components/select';
-import {
-  Card,
-  Disclosure,
-  Empty,
-  InlineLoading,
-  KeyValue,
-  Loading,
-  Notice,
-  SavedDataNotice,
-  Screen,
-  T,
-} from '@/components/ui';
+import { Card, Disclosure, Empty, InlineLoading, KeyValue, Loading, Notice, SavedDataNotice, Screen, Stat, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { costWithTariff, computeBills, type Bill } from '@/lib/billing';
-import { normalize } from '@/lib/consumption';
+import { readingsOf } from '@/lib/consumption';
 import { cap, fmtDate, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS } from '@/lib/periods';
 import { contractedOnFn } from '@/lib/contracts';
@@ -47,7 +36,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
 
   const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
 
-  const readings = useMemo(() => normalize(months.flatMap((k) => q.months[k] ?? []), 60), [q.months, months]);
+  const readings = useMemo(() => readingsOf(q.months, months, 60), [q.months, months]);
 
   // Facturas de los últimos `range` meses (se descarta el primer periodo si está cortado)
   const bills = useMemo(() => {
@@ -137,8 +126,8 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
               />
             </View>
             <View style={styles.miniRow}>
-              {openBill ? <Mini label="En curso" value={fmtEur(openBill.cost.total)} sub={`${openBill.days} días`} /> : null}
-              {maxBill ? <Mini label="La más alta" value={fmtEur(maxBill.cost.total)} sub={periodLabel(maxBill)} /> : null}
+              {openBill ? <Stat label="En curso" value={fmtEur(openBill.cost.total)} sub={`${openBill.days} días`} /> : null}
+              {maxBill ? <Stat label="La más alta" value={fmtEur(maxBill.cost.total)} sub={periodLabel(maxBill)} /> : null}
             </View>
           </Card>
 
@@ -233,20 +222,6 @@ function OfferRow({ name, total, perYear, diffYear }: { name: string; total: num
   );
 }
 
-function Mini({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  const c = useTheme();
-  return (
-    <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
-      <T variant="small">{label}</T>
-      <T style={{ fontWeight: '800', fontSize: 16 }}>{value}</T>
-      {sub ? (
-        <T variant="small" numberOfLines={1}>
-          {sub}
-        </T>
-      ) : null}
-    </View>
-  );
-}
 
 function periodLabel(b: Bill): string {
   if (b.start.slice(8) === '01' && b.start.slice(0, 7) === b.end.slice(0, 7) && !b.open) return cap(fmtMonthLong(b.start.slice(0, 7)));
@@ -299,7 +274,6 @@ function BillRow({ b }: { b: Bill }) {
 const styles = StyleSheet.create({
   split: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.two },
   miniRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
-  mini: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, gap: 2 },
   warn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, padding: 10, marginTop: 4 },
   offer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
 });
