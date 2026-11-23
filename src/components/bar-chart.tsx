@@ -163,14 +163,22 @@ export function BarChart({
                   </G>
                 );
               })}
-              {referenceLines.map((r, i) => (
-                <G key={`ref${i}`}>
-                  <Line x1={0} x2={chartW} y1={y(r.value)} y2={y(r.value)} stroke={r.color} strokeWidth={1.5} strokeDasharray="5 4" />
-                  <SvgText x={4} y={y(r.value) - 5} fontSize={11} fontWeight="bold" fill={r.color}>
-                    {r.label}
-                  </SvgText>
-                </G>
-              ))}
+              {referenceLines.map((r, i) => {
+                // Etiqueta en una pastilla rellena (legible sobre las barras en modo claro y oscuro)
+                const ly = y(r.value);
+                const w = Math.ceil(r.label.length * 6.6) + 12;
+                const h = 18;
+                const top = Math.max(1, Math.min(ly - h / 2, height - BOTTOM - h));
+                return (
+                  <G key={`ref${i}`}>
+                    <Line x1={0} x2={chartW} y1={ly} y2={ly} stroke={r.color} strokeWidth={2} strokeDasharray="6 4" />
+                    <Rect x={2} y={top} width={w} height={h} rx={9} fill={r.color} />
+                    <SvgText x={2 + w / 2} y={top + 13} fontSize={11.5} fontWeight="bold" fill={c.card} textAnchor="middle">
+                      {r.label}
+                    </SvgText>
+                  </G>
+                );
+              })}
             </Svg>
           </ScrollView>
         </View>
