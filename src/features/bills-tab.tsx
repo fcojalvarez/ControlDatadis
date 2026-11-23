@@ -23,8 +23,7 @@ import { costWithTariff, computeBills, type Bill } from '@/lib/billing';
 import { normalize } from '@/lib/consumption';
 import { cap, fmtDate, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS } from '@/lib/periods';
-import { contractPeriods } from '@/lib/trip-risk';
-import { currentContract } from '@/lib/contracts';
+import { contractPeriods, currentContract } from '@/lib/contracts';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';

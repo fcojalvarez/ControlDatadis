@@ -354,6 +354,8 @@ export function normalizeMaxPower(rows: MaxPowerRaw[]): MaxPowerReading[] {
       };
     })
     .filter((r) => Number.isFinite(r.kw))
+    // Sin repetidos (la consulta se hace por tramos y un mismo pico podría llegar dos veces)
+    .filter((r, i, all) => all.findIndex((x) => x.date === r.date && x.time === r.time && x.period === r.period) === i)
     .sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
 }
 

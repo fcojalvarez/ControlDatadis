@@ -13,18 +13,19 @@ import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad
 import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 import { currentContract } from '@/lib/contracts';
 
-import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
+import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
-import { useContract, useMaxPower } from './queries';
+import { useContract } from './queries';
 import { OfflineDataCard } from './offline-data';
-import { TripRiskSummaryCard } from './trip-risk';
+import { PeakSummaryCard } from './peak-card';
 import { useSupplyTariffs } from './tariffs';
-import { rangeMonths, type SupplyRef } from './types';
+import type { SupplyRef } from './types';
 
 export type SectionId = 'plomos' | 'mes' | 'pasado' | 'anio' | 'consejos' | 'historico';
 
 export const SECTIONS: { id: SectionId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'plomos', label: '¿Saltarán los plomos?', icon: 'warning-outline' },
+  // (el id «plomos» se conserva para respetar el orden que ya tuviera guardado el usuario)
+  { id: 'plomos', label: 'Pico de potencia', icon: 'flash-outline' },
   { id: 'mes', label: 'Mes en curso', icon: 'today-outline' },
   { id: 'pasado', label: 'Mes pasado', icon: 'calendar-outline' },
   { id: 'anio', label: 'Último año', icon: 'bar-chart-outline' },
@@ -50,8 +51,6 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
 
   const q = useConsumptionMonths(supply, months, 0);
   const contract = useContract(supply);
-  const { start, end } = useMemo(() => rangeMonths('12m', supply), [supply]);
-  const maxp = useMaxPower(supply, start, end);
 
   const ct = currentContract(contract.data?.contracts);
   const contractedKW = useMemo(() => ct?.contractedPowerkW ?? [], [ct]);
@@ -95,7 +94,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
 
   // Tarjetas del Resumen (el usuario puede reordenarlas u ocultarlas)
   const sections: Record<SectionId, ReactNode> = {
-    plomos: <TripRiskSummaryCard supply={supply} onOpen={() => onOpen('potencia')} />,
+    plomos: <PeakSummaryCard supply={supply} month={cur} onOpen={() => onOpen('potencia')} />,
     mes: curS.total > 0 ? (
         <Card title={cap(fmtMonthLong(cur).split(' ')[0])} right={<T variant="small">hasta el día {Number(curS.lastDay?.slice(8))}</T>} onPress={() => onOpen('consumo')}>
           <View style={styles.split}>
@@ -104,8 +103,8 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
               <Delta pct={pctChange(curS.total, prevSameDays)} label={`que ${prevName}`} />
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <T variant="small">Previsión</T>
-              <T variant="value">{fmtKWh(curS.avgPerDay * daysInMonth(cur), 0)}</T>
+              <T variant="small">Media diaria</T>
+              <T variant="value">{fmtKWh(curS.avgPerDay, 1)}</T>
             </View>
           </View>
         </Card>
@@ -158,7 +157,7 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   };
 
   return (
-    <Screen scrollEnabled={!dragging} refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh(), maxp.refresh())}>
+    <Screen scrollEnabled={!dragging} refreshing={q.loading && yearS.total > 0} onRefresh={() => (q.refresh(), contract.refresh())}>
       {q.loading && !yearS.total && !curS.total ? <Loading text="Descargando tu consumo…" /> : null}
       {q.loading && (yearS.total > 0 || curS.total > 0) ? (
         <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} />

@@ -10,11 +10,11 @@ import { UpdateBanner } from '@/components/update';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useContract } from '@/features/queries';
-import { riskStorageKey } from '@/features/trip-risk';
+import { peakStorageKey } from '@/features/peaks';
 import { DAY, useCachedQuery } from '@/hooks/use-cached-query';
 import { useTheme } from '@/hooks/use-theme';
 import type { CompactReading } from '@/lib/consumption';
-import { fmtDate, fmtNum, fmtPct, ym } from '@/lib/format';
+import { fmtDate, fmtNum, ym } from '@/lib/format';
 import { cacheGet, getJSON } from '@/lib/storage';
 import { currentContract } from '@/lib/contracts';
 
@@ -151,7 +151,7 @@ function SupplyCard({ s }: { s: Supply }) {
         <View style={styles.tiles}>
           <MonthTile cups={s.cups} />
           <Tile icon="flash-outline" label="Potencia" value={kw.length ? `${fmtNum(Math.max(...kw), 2)} kW` : '—'} />
-          <RiskTile cups={s.cups} />
+          <PeakTile cups={s.cups} />
         </View>
       </Card>
     </Pressable>
@@ -188,18 +188,18 @@ function MonthTile({ cups }: { cups: string }) {
   return <Tile icon="speedometer-outline" label="Este mes" value={kwh === null ? '—' : `${fmtNum(kwh, 0)} kWh`} />;
 }
 
-/** Último riesgo de corte calculado (se calcula al abrir el suministro) */
-function RiskTile({ cups }: { cups: string }) {
+/** Último pico de potencia medido (se guarda al abrir el suministro) */
+function PeakTile({ cups }: { cups: string }) {
   const c = useTheme();
   const { username } = useSession();
-  const [p, setP] = useState<number | null>(null);
+  const [v, setV] = useState<{ kw: number | null; pct: number | null }>({ kw: null, pct: null });
   useFocusEffect(
     useCallback(() => {
-      getJSON<{ p: number | null }>(riskStorageKey(username, cups), { p: null }).then((v) => setP(v.p));
+      getJSON<{ kw: number | null; pct: number | null }>(peakStorageKey(username, cups), { kw: null, pct: null }).then(setV);
     }, [username, cups]),
   );
-  const color = p === null ? undefined : p < 0.05 ? c.p3 : p < 0.2 ? '#7CB342' : p < 0.5 ? c.p2 : p < 0.8 ? '#EF7D2F' : c.danger;
-  return <Tile icon="warning-outline" label="Plomos" value={p === null ? '—' : fmtPct(p)} color={color} />;
+  const color = v.pct === null ? undefined : v.pct > 1 ? c.danger : v.pct > 0.85 ? c.warning : undefined;
+  return <Tile icon="flash-outline" label="Pico" value={v.kw === null ? '—' : `${fmtNum(v.kw, 2)} kW`} color={color} />;
 }
 
 const styles = StyleSheet.create({

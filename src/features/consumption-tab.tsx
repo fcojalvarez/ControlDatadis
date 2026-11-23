@@ -56,14 +56,13 @@ import {
 import { maxPowerPeriod, PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
 import { currentContract } from '@/lib/contracts';
 
-import { daysInMonth, useConsumptionMonths } from './consumption-data';
+import { useConsumptionMonths } from './consumption-data';
 import {
   canStepRange,
   dayBounds,
   daysBetween,
   initialRange,
   rangeComparisons,
-  rangeKind,
   rangeLabel,
   rangeMonths as monthsOfRange,
   rangePresets,
@@ -411,9 +410,6 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
       <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
     </Pressable>
   );
-  const kind = rangeKind(range);
-  const showForecast = kind === 'month' && range.to.slice(0, 7) === bounds.max;
-  const forecast = showForecast ? s.avgPerDay * daysInMonth(range.from.slice(0, 7)) : 0;
   const curveMax = Math.max(0, ...[...curvePeaks.byDay.values()].map((p) => p.kw));
 
   return (
@@ -464,9 +460,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             </View>
             <View style={styles.miniRow}>
               {!isDay ? <Mini label="Media diaria" value={fmtKWh(s.avgPerDay, 1)} /> : null}
-              {showForecast ? (
-                <Mini label="Previsión" value={fmtKWh(forecast, 0)} />
-              ) : nDays > 62 ? (
+              {nDays > 62 ? (
                 <Mini label="Media mensual" value={fmtKWh(s.monthly.length ? s.total / s.monthly.length : 0, 0)} />
               ) : null}
               {measuredMax ? (
