@@ -11,7 +11,7 @@ import { useEffect, useMemo } from 'react';
 
 import { useSession } from '@/context/session';
 import { normalizeMaxPower, normalizeMonth, type CompactReading, type MaxPowerReading, type Reading } from '@/lib/consumption';
-import { currentContract } from '@/lib/contracts';
+import { contractedOnFn, currentContract } from '@/lib/contracts';
 import { maxPowerPeriod, type Period } from '@/lib/periods';
 import { setJSON } from '@/lib/storage';
 
@@ -47,7 +47,9 @@ export function useMeasuredPeaks(supply: SupplyRef) {
     return [...map.values()].sort((a, b) => (a.month < b.month ? -1 : 1));
   }, [rows]);
   const absMax = monthly.reduce<MaxPowerReading | null>((m, x) => (!m || x.max.kw > m.kw ? x.max : m), null);
-  const limitOf = (r: MaxPowerReading) => limitForPeriod(r.period, contracted);
+  // Cada pico se compara con la potencia que había contratada ese día (no con la de hoy)
+  const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
+  const limitOf = (r: MaxPowerReading) => limitForPeriod(r.period, contractedOn(r.date));
   /** Picos medidos por encima de la potencia contratada, del más reciente al más antiguo */
   const exceedances = rows.filter((r) => contracted.length && r.kw > limitOf(r)).reverse();
 
@@ -55,11 +57,11 @@ export function useMeasuredPeaks(supply: SupplyRef) {
   const last = monthly[monthly.length - 1];
   useEffect(() => {
     if (!last) return;
-    const limit = limitForPeriod(last.max.period, contracted);
+    const limit = limitForPeriod(last.max.period, contractedOn(last.max.date));
     setJSON(peakStorageKey(username, supply.cups), { kw: last.max.kw, month: last.month, pct: limit ? last.max.kw / limit : null });
-  }, [last, contracted, username, supply.cups]);
+  }, [last, contractedOn, username, supply.cups]);
 
-  return { ...q, rows, monthly, absMax, contracted, limitOf, exceedances };
+  return { ...q, rows, monthly, absMax, contracted, contractedOn, limitOf, exceedances };
 }
 
 export function peakStorageKey(username: string | null, cups: string) {

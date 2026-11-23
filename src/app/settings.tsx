@@ -13,7 +13,7 @@ import { cacheClear, cacheStats } from '@/lib/storage';
 
 export default function SettingsScreen() {
   const c = useTheme();
-  const { settings, updateSettings, signOut, username } = useSession();
+  const { settings, updateSettings, signOut, username, demo, setDemo } = useSession();
   const [newNif, setNewNif] = useState('');
   const [stats, setStats] = useState(() => cacheStats());
 
@@ -32,7 +32,18 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
+      {/* ---------- Modo demo ---------- */}
+      <Card info="Enseña la app con datos simulados de dos viviendas (una con placas solares). Tus datos reales no se tocan: siguen guardados y se siguen descargando aparte.">
+        <Item
+          icon="flask-outline"
+          label="Modo demo"
+          sub="Ver la app con datos de ejemplo"
+          right={<Switch value={demo} onValueChange={setDemo} trackColor={{ true: c.tint }} />}
+        />
+      </Card>
+
       {/* ---------- Cuenta ---------- */}
+      {!demo ? (
       <Card>
         <Item icon="person-circle-outline" label={username ?? '—'} sub="Usuario de Datadis" />
         <Item
@@ -47,6 +58,7 @@ export default function SettingsScreen() {
           }
         />
       </Card>
+      ) : null}
 
       {/* ---------- Instalación ---------- */}
       <Card>

@@ -32,6 +32,8 @@ export type MonthJob = {
   measurementType: MeasurementType;
   authorizedNif?: string;
   priority: number;
+  /** Cliente con el que se descarga (el real o el del modo demo); lo pone `enqueue` */
+  client?: DatadisClient;
 };
 
 export type SyncSnapshot = {
@@ -55,7 +57,8 @@ const MIN_REFETCH_MS = 24 * 60 * 60_000 + 10 * 60_000;
 const BLOCKED_KEY = 'datadis:blocked-months';
 
 class ConsumptionSync {
-  private client: DatadisClient | null = null;
+  /** Clientes que han encolado meses (el real y, si se usa, el del modo demo) */
+  private clients = new Set<DatadisClient>();
   private queue = new Map<string, MonthJob>();
   private running: string | null = null;
   private errors = new Map<string, string>();
@@ -87,7 +90,7 @@ class ConsumptionSync {
       running: this.running,
       errors: new Map(this.errors),
       waiting: new Map([...this.delayed].map(([k, d]) => [k, { at: d.at, blocked: d.blocked }])),
-      cooldownUntil: this.client?.rateLimitedUntil ?? 0,
+      cooldownUntil: Math.max(0, ...[...this.clients].map((c) => c.rateLimitedUntil)),
       pausedUntil: this.pausedUntil > Date.now() ? this.pausedUntil : 0,
     };
     this.listeners.forEach((l) => l(key));
@@ -99,7 +102,9 @@ class ConsumptionSync {
    * que Datadis no deja repetir todavía.
    */
   enqueue(client: DatadisClient, jobs: MonthJob[], force = false) {
-    this.client = client;
+    this.clients.add(client);
+    // Cada mes recuerda su cliente: los del modo demo nunca se piden a Datadis ni al revés
+    jobs = jobs.map((j) => ({ ...j, client }));
     if (!this.loadBlocked) {
       this.loadBlocked = getJSON<Record<string, number>>(BLOCKED_KEY, {}).then((saved) => {
         for (const [k, until] of Object.entries(saved)) if (until > Date.now()) this.blockedUntil.set(k, until);
@@ -176,29 +181,30 @@ class ConsumptionSync {
   private next(): MonthJob | null {
     let best: MonthJob | null = null;
     for (const j of this.queue.values()) {
+      if (j.client?.rateLimitedUntil) continue; // su cliente está en pausa por límite de consultas
       if (!best || j.priority > best.priority || (j.priority === best.priority && j.month > best.month)) best = j;
     }
     return best;
   }
 
   private async pump() {
-    if (this.running || !this.client) return;
-    const client = this.client;
+    if (this.running) return;
     this.promote();
     while (this.queue.size) {
-      const cooldown = client.rateLimitedUntil;
-      if (cooldown) {
-        this.emit(null);
-        this.schedule(cooldown + 5_000);
-        return;
-      }
       if (this.pausedUntil > Date.now()) {
         this.emit(null);
         this.schedule(this.pausedUntil);
         return;
       }
       const job = this.next();
-      if (!job) return;
+      if (!job) {
+        // Todos los meses pendientes son de un cliente en pausa: se reanuda cuando termine
+        const until = Math.min(...[...this.queue.values()].map((j) => j.client?.rateLimitedUntil || Date.now() + 60_000));
+        this.emit(null);
+        this.schedule(until + 5_000);
+        return;
+      }
+      const client = job.client!;
       this.queue.delete(job.key);
       this.running = job.key;
       this.emit(null);

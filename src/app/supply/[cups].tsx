@@ -3,6 +3,7 @@ import { Stack } from 'expo-router/stack';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
+import { DemoBanner } from '@/components/demo-banner';
 import { BottomTabs } from '@/components/ui';
 import { BillsTab } from '@/features/bills-tab';
 import { ConsumptionTab } from '@/features/consumption-tab';
@@ -55,6 +56,7 @@ export default function SupplyScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <Stack.Screen options={{ title: supply.address || supply.cups }} />
+      <DemoBanner />
       {tab === 'resumen' && <SummaryTab supply={supply} onOpen={setTab} />}
       {tab === 'consumo' && <ConsumptionTab supply={supply} />}
       {tab === 'facturas' && <BillsTab supply={supply} />}

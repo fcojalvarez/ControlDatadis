@@ -85,7 +85,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
               month={month}
               weekly={view === 'semana'}
               measured={mp.rows.filter((r) => r.key === month)}
-              contracted={mp.contracted}
+              contractedOn={mp.contractedOn}
               colorFor={colorFor}
               refs={limitLine}
             />
@@ -221,7 +221,7 @@ function DayWeekView({
   month,
   weekly,
   measured,
-  contracted,
+  contractedOn,
   colorFor,
   refs,
 }: {
@@ -229,7 +229,7 @@ function DayWeekView({
   month: string;
   weekly: boolean;
   measured: MaxPowerReading[];
-  contracted: number[];
+  contractedOn: (day: string) => number[];
   colorFor: (kw: number, limit: number) => string;
   refs: { value: number; color: string; label: string }[];
 }) {
@@ -245,7 +245,7 @@ function DayWeekView({
   const interval = use15 ? 15 : 60;
   const days = useMemo(() => dailyPeaks(month, rows, interval, measured), [month, rows, interval, measured]);
   const weeks = useMemo(() => weeklyPeaks(days), [days]);
-  const limitOf = (p: CurvePeak) => limitForPeriod(p.period, contracted);
+  const limitOf = (p: CurvePeak) => limitForPeriod(p.period, contractedOn(p.day));
   const loading = (q15.loading || q60.loading) && !rows.length;
 
   if (loading) return <InlineLoading text="Descargando la curva de este mes…" />;

@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { DistributorError, Supply } from '@/api/datadis';
 import { Card, Chips, Empty, InfoToggle, Loading, SavedDataNotice, T, Screen } from '@/components/ui';
+import { DemoBanner } from '@/components/demo-banner';
 import { UpdateBanner } from '@/components/update';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
@@ -41,7 +42,7 @@ function openSupply(s: Supply) {
 
 export default function SuppliesScreen() {
   const c = useTheme();
-  const { client, settings, updateSettings, username } = useSession();
+  const { client, settings, updateSettings, username, demo } = useSession();
   const nif = settings.activeNif ?? undefined;
   const [showOld, setShowOld] = useState(false);
 
@@ -70,9 +71,10 @@ export default function SuppliesScreen() {
           ),
         }}
       />
+      <DemoBanner />
       <Screen refreshing={q.loading && !!q.data} onRefresh={q.refresh}>
         <UpdateBanner />
-        {settings.authorizedNifs.length > 0 && (
+        {settings.authorizedNifs.length > 0 && !demo && (
           <Chips options={nifOptions} value={settings.activeNif ?? ''} onChange={(v) => updateSettings({ activeNif: v || null })} />
         )}
 

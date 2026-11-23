@@ -243,10 +243,11 @@ export function summarize(readings: Reading[], intervalMin: number): Summary {
     weekdayCount[wd] += 1;
   }
 
-  // Consumo base: percentil 10 de las lecturas, convertido a potencia media (kW)
+  // Consumo base: percentil 10 de lo que demanda la casa (red + lo cubierto por las placas;
+  // si no, con placas saldría 0 porque de día no se toma nada de la red), en kW
   let baseLoadKW = 0;
   if (readings.length) {
-    const sorted = readings.map((r) => r.kwh).sort((a, b) => a - b);
+    const sorted = readings.map((r) => r.kwh + r.selfConsumption).sort((a, b) => a - b);
     const p10 = sorted[Math.floor(sorted.length * 0.1)];
     baseLoadKW = p10 * (60 / intervalMin);
   }

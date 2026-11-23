@@ -10,7 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function LoginScreen() {
   const c = useTheme();
-  const { signIn } = useSession();
+  const { signIn, setDemo } = useSession();
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
@@ -94,6 +94,7 @@ export default function LoginScreen() {
           {error ? <ErrorBox message={error} /> : null}
 
           <Button title="Entrar" onPress={submit} loading={loading} style={{ marginTop: Spacing.two }} />
+          <Button title="Ver la app con datos de ejemplo" variant="secondary" onPress={() => setDemo(true)} />
 
           <View style={styles.footer}>
             <T variant="small" style={{ color: c.tint, fontWeight: '600' }} onPress={() => Linking.openURL('https://datadis.es/register')}>

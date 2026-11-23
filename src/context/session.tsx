@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { DatadisClient, login as apiLogin } from '@/api/datadis';
+import { DEMO_USER, DemoClient } from '@/api/demo';
 import { DEFAULT_PRICES, type Prices } from '@/lib/consumption';
 import type { SupplyTariffs } from '@/lib/tariff';
 import { cachePruneObsolete, clearCredentials, getJSON, loadCredentials, saveCredentials, setJSON } from '@/lib/storage';
@@ -32,6 +33,9 @@ type SessionValue = {
   status: Status;
   username: string | null;
   client: DatadisClient;
+  /** Modo demo: datos simulados (lo real sigue guardado y se sigue descargando aparte) */
+  demo: boolean;
+  setDemo: (on: boolean) => void;
   settings: Settings;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   signIn: (username: string, password: string, remember: boolean) => Promise<void>;
@@ -69,6 +73,9 @@ const client = new DatadisClient(
   () => refreshToken(auth),
 );
 
+// Cliente simulado del modo demo (no se conecta a Datadis)
+const demoClient = new DemoClient();
+
 // La pausa por límite de consultas se guarda para respetarla aunque se cierre la app
 client.onCooldownChange((until, step) => {
   setJSON(COOLDOWN_KEY, { until, step });
@@ -78,6 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [username, setUsername] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [demo, setDemo] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -113,6 +121,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    setDemo(false);
     auth.token = null;
     auth.creds = null;
     // Los datos descargados se conservan en el móvil (se borran desde Ajustes si se quiere)
@@ -131,8 +140,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, username, client, settings, updateSettings, signIn, signOut }),
-    [status, username, settings, updateSettings, signIn, signOut],
+    () =>
+      demo
+        ? // En el modo demo la app funciona igual pero con el cliente simulado y su propio usuario
+          // (las claves de lo guardado llevan el usuario, así que nada se mezcla con lo real)
+          { status: 'loggedIn' as const, username: DEMO_USER, client: demoClient, demo, setDemo, settings: { ...settings, activeNif: null }, updateSettings, signIn, signOut }
+        : { status, username, client, demo, setDemo, settings, updateSettings, signIn, signOut },
+    [demo, status, username, settings, updateSettings, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
