@@ -34,7 +34,11 @@ export async function clearCredentials() {
 export async function getJSON<T>(key: string, fallback: T): Promise<T> {
   try {
     const v = await AsyncStorage.getItem(key);
-    return v ? ({ ...fallback, ...JSON.parse(v) } as T) : fallback;
+    if (!v) return fallback;
+    const parsed = JSON.parse(v);
+    // Las listas se devuelven tal cual; los objetos se completan con los valores por defecto
+    if (Array.isArray(fallback) || Array.isArray(parsed) || typeof parsed !== 'object' || parsed === null) return parsed as T;
+    return { ...fallback, ...parsed } as T;
   } catch {
     return fallback;
   }

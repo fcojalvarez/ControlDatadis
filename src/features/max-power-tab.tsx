@@ -14,6 +14,7 @@ import { PERIOD_LABELS, type Period } from '@/lib/periods';
 import { useConsumptionMonths } from './consumption-data';
 import { dailyPeaks, limitForPeriod, useMeasuredPeaks, weeklyPeaks, type CurvePeak } from './peaks';
 import { supplyBounds } from './period';
+import { CutsCard } from './cuts';
 import { ReactiveSection } from './reactive-section';
 import type { SupplyRef } from './types';
 
@@ -143,12 +144,15 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
         )}
       </Card>
 
+      {/* ---------- Mis cortes ---------- */}
+      <CutsCard supply={supply} />
+
       {/* ---------- Picos por encima de la potencia (del mismo periodo) ---------- */}
       {mp.data && mp.contracted.length ? (
         <Card
           title="Picos por encima de tu potencia"
-          subtitle={byMonth ? `en ${monthName}` : `en los últimos ${mp.monthly.length} meses`}
-          info="Momentos en que la potencia superó la contratada. Si coinciden con un corte que recuerdes, ahí lo tienes.">
+          subtitle={`${byMonth ? `En ${monthName}` : `En los últimos ${mp.monthly.length} meses`}. No son cortes: el limitador tolera excesos cortos.`}
+          info="Cuartos de hora en que la potencia media superó la contratada. No quiere decir que saltara la luz: el limitador tolera excesos pequeños durante un tiempo. Para comprobar un corte concreto, apúntalo en «Mis cortes».">
           {!byMonth ? (
             mp.exceedances.length ? (
               <ShowMore

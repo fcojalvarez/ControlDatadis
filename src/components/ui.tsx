@@ -107,7 +107,7 @@ export function BottomTabs<V extends string>({
   const c = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.bottomTabs, { backgroundColor: c.card, paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View style={[styles.bottomTabs, { backgroundColor: c.card, borderColor: c.backgroundSelected, paddingBottom: Math.max(insets.bottom, 8) }]}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -613,6 +613,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
+    // Borde visible (en modo oscuro la sombra no se ve y la barra se confundía con el fondo)
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
     // sombra suave hacia arriba
     shadowColor: '#000',
     shadowOpacity: 0.08,
