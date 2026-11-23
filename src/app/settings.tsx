@@ -119,7 +119,7 @@ export default function SettingsScreen() {
       {/* ---------- Datos guardados ---------- */}
       <Card
         title="Datos guardados"
-        info="Todo lo que se descarga de Datadis se guarda en el móvil y no se borra solo: si Datadis falla o va lento, la app sigue mostrando lo guardado. Los meses cerrados se vuelven a consultar como mucho una vez al mes y el mes en curso cada 6 horas.">
+        info="Todo lo que se descarga de Datadis se guarda en el móvil y no se borra solo: si Datadis falla o va lento, la app sigue mostrando lo guardado. Los meses cerrados se vuelven a consultar como mucho una vez al mes y el mes en curso una vez al día (Datadis no deja repetir la misma consulta antes de 24 h).">
         <Item icon="folder-outline" label={stats.files ? `${fmtNum(stats.bytes / 1024 / 1024, 1)} MB` : 'Ninguno todavía'} sub={stats.files ? `${stats.files} archivos` : undefined} />
         <Item
           icon="trash-outline"

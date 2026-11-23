@@ -25,7 +25,8 @@ const DEFAULT_SETTINGS: Settings = {
   activeNif: null,
 };
 const SETTINGS_KEY = 'settings';
-const COOLDOWN_KEY = 'datadis:cooldown';
+// v2: las pausas guardadas con la lógica anterior (que confundía consultas repetidas con el límite) se descartan
+const COOLDOWN_KEY = 'datadis:cooldown:v2';
 
 type SessionValue = {
   status: Status;

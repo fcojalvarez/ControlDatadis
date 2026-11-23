@@ -9,7 +9,7 @@ import { monthsBetween, type SupplyRef } from './types';
 function ttlFor(end: Date) {
   const now = new Date();
   const includesCurrent = end.getFullYear() === now.getFullYear() && end.getMonth() === now.getMonth();
-  return includesCurrent ? 6 * HOUR : 7 * DAY;
+  return includesCurrent ? DAY + HOUR : 7 * DAY; // Datadis no deja repetir una consulta antes de 24 h
 }
 
 export function useContract(supply: Pick<SupplyRef, 'cups' | 'distributorCode'>) {

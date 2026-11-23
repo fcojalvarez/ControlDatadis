@@ -14,18 +14,24 @@ export { addMonths, daysInMonth, monthDate, monthKey, monthRange, type MonthKey 
 
 /**
  * Cuánto tiempo vale lo guardado de un mes antes de volver a preguntar a Datadis:
- *  - mes en curso o recién cerrado (las distribuidoras publican con 1-3 días de retraso): 6 h
- *  - mes reciente sin datos: 6 h (puede que la distribuidora aún no los haya publicado)
+ *  - mes en curso o recién cerrado (las distribuidoras publican con 1-3 días de retraso): 1 día
+ *  - mes reciente sin datos: 1 día (puede que la distribuidora aún no los haya publicado)
+ *  (Datadis no deja repetir la misma consulta antes de 24 h)
  *  - mes antiguo sin datos (antes de que hubiera histórico): 30 días
  *  - mes cerrado con datos: 30 días
  */
 function monthTtl(k: MonthKey, rowCount: number): number {
   const end = monthDate(addMonths(k, 1));
   const ageMs = Date.now() - end.getTime();
-  if (ageMs < 4 * DAY) return 6 * HOUR;
-  if (rowCount === 0) return ageMs < 60 * DAY ? 6 * HOUR : 30 * DAY;
+  if (ageMs < 4 * DAY) return DAY + HOUR;
+  if (rowCount === 0) return ageMs < 60 * DAY ? DAY + HOUR : 30 * DAY;
   return 30 * DAY;
 }
+
+/** Estado de descarga de un mes */
+export type MonthState =
+  | { month: MonthKey; state: 'saved' | 'empty' | 'running' | 'pending' }
+  | { month: MonthKey; state: 'blocked' | 'error'; at: number; message?: string };
 
 type MonthEntry = { rows: CompactReading[]; distributorErrors?: DistributorError[] };
 
@@ -136,6 +142,19 @@ export function useConsumptionMonths(
   }
   const loading = current.reading || (pending > 0 && !sync.cooldownUntil && !sync.pausedUntil);
 
+  // Estado de cada mes (para «Ver qué falta»)
+  const status: MonthState[] = months.map((m) => {
+    const k = prefix + m;
+    if (sync.running === k) return { month: m, state: 'running' };
+    const rows = current.months[m];
+    if (rows !== undefined) return { month: m, state: rows.length ? 'saved' : 'empty' };
+    const w = sync.waiting.get(k);
+    if (w) return { month: m, state: w.blocked ? 'blocked' : 'error', at: w.at, message: sync.errors.get(k) };
+    return { month: m, state: 'pending' };
+  });
+  // La cola descarga primero los meses más recientes
+  const next = status.filter((x) => x.state === 'pending' && sync.pending.has(prefix + x.month)).map((x) => x.month).sort().pop() ?? null;
+
   // Actualizar a mano: solo el mes en curso, el anterior y los que falten (los meses cerrados no cambian)
   const refresh = useCallback(() => {
     const recent = addMonths(monthKey(new Date()), -1);
@@ -167,6 +186,11 @@ export function useConsumptionMonths(
     pending,
     done,
     total: months.length,
+    status,
+    /** mes que se descargará a continuación (o el que se está descargando) */
+    next: status.find((x) => x.state === 'running')?.month ?? next,
+    /** pausa general de la descarga: por límite de Datadis o porque no responde */
+    pause: sync.cooldownUntil ? { until: sync.cooldownUntil, kind: 'limit' as const } : sync.pausedUntil ? { until: sync.pausedUntil, kind: 'down' as const } : null,
     refresh,
     retry,
   };

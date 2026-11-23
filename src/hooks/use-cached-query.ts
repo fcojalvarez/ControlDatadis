@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { DatadisError } from '@/api/datadis';
 import { cacheGet, cacheSet } from '@/lib/storage';
 
 type State<T> = {
@@ -62,7 +63,9 @@ export function useCachedQuery<T>(key: string | null, fetcher: () => Promise<T>,
       } catch (e) {
         if (currentKey.current !== key) return;
         const msg = e instanceof Error ? e.message : String(e);
-        setState((s) => ({ ...s, loading: false, error: msg, stale: s.data !== null }));
+        // Consulta repetida en menos de 24 h: lo guardado ya es lo último, no es un error
+        const repeated = e instanceof DatadisError && e.repeated;
+        setState((s) => (repeated && s.data !== null ? { ...s, loading: false, error: null, stale: false } : { ...s, loading: false, error: msg, stale: s.data !== null }));
       }
     },
     [key, ttlMs],

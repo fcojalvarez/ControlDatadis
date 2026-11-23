@@ -99,11 +99,20 @@ export class DatadisError extends Error {
   status: number;
   /** Datadis ha limitado las consultas: hay que esperar antes de volver a preguntar */
   rateLimited: boolean;
-  constructor(message: string, status = 0, rateLimited = false) {
+  /**
+   * Datadis rechaza ESTA consulta concreta (p. ej. «consulta ya realizada en las últimas 24 horas»).
+   * Las demás consultas siguen funcionando: solo hay que no repetir esta hasta pasado un día.
+   */
+  repeated: boolean;
+  /** Si `repeated`: cuánto esperar antes de repetir esta consulta */
+  retryAfterMs: number;
+  constructor(message: string, status = 0, rateLimited = false, repeated = false, retryAfterMs = 0) {
     super(message);
     this.name = 'DatadisError';
     this.status = status;
     this.rateLimited = rateLimited;
+    this.repeated = repeated;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -112,6 +121,14 @@ function isRateLimit(status: number, body: string): boolean {
   if (status === 429) return true;
   return status >= 400 && /too many|rate limit|limit exceeded|l[ií]mite de (consultas|peticiones)|demasiadas (consultas|peticiones)/i.test(body);
 }
+
+/** ¿Datadis rechaza la consulta por estar repetida (misma consulta en las últimas 24 h)? */
+function isRepeatedQuery(body: string): boolean {
+  return /ya realizada|[uú]ltimas 24|24 ?h/i.test(body);
+}
+
+/** Tiempo que Datadis exige entre dos consultas idénticas */
+export const REPEAT_BLOCK_MS = 24 * 60 * 60_000 + 10 * 60_000;
 
 /** Pausas tras sucesivos avisos de límite: 15 min, 30 min, 1 h, 2 h, 4 h, 6 h */
 const COOLDOWN_STEPS_MIN = [15, 30, 60, 120, 240, 360];
@@ -232,6 +249,8 @@ export class DatadisClient {
   /** Si Datadis ha limitado las consultas, no se le pregunta hasta esta hora (se guarda en el móvil) */
   private cooldownUntil = 0;
   private cooldownStep = 0;
+  /** Avisos de límite seguidos en consultas distintas (si son varios, el límite es general) */
+  private limitStrikes = 0;
   /** Cola: las consultas se hacen de una en una y con una pausa entre ellas */
   private chain: Promise<void> = Promise.resolve();
   private cooldownListeners = new Set<(until: number) => void>();
@@ -305,10 +324,23 @@ export class DatadisClient {
         const res = await this.getOnce<T>(path, params, true);
         this.downUntil = 0;
         this.cooldownStep = 0;
+        this.limitStrikes = 0;
         return res;
       } catch (e) {
         lastError = e;
+        if (e instanceof DatadisError && e.repeated) {
+          // Solo esta consulta está bloqueada (repetida en menos de 24 h): las demás siguen
+          throw e;
+        }
         if (e instanceof DatadisError && e.rateLimited) {
+          // Un aviso de límite suele referirse solo a esa consulta. Si se repite con consultas
+          // distintas seguidas, el límite es general y se hace una pausa.
+          this.limitStrikes += 1;
+          if (this.limitStrikes < 2) {
+            // Sin saber el motivo exacto, se reintenta esta consulta en 1 h (las demás siguen)
+            throw new DatadisError('Datadis no ha dejado hacer esta consulta. Se volverá a intentar en 1 hora.', 429, false, true, 60 * 60_000);
+          }
+          this.limitStrikes = 0;
           this.startCooldown();
           throw this.cooldownError();
         }
@@ -339,6 +371,9 @@ export class DatadisClient {
     }
     const text = await res.text();
     if (!res.ok) {
+      if (res.status === 429 && isRepeatedQuery(text)) {
+        throw new DatadisError('Esta consulta ya se hizo hoy y Datadis no deja repetirla hasta pasadas 24 h.', 429, false, true, REPEAT_BLOCK_MS);
+      }
       throw new DatadisError(describeHttpError(res.status, text), res.status, isRateLimit(res.status, text));
     }
     if (!text) return {} as T;
