@@ -60,7 +60,7 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
 
       {/* ---------- Pico de cada mes / semana / día ---------- */}
       <Card
-        title="Pico de cada…"
+        title="Potencia máxima"
         right={
           <Select<View_>
             title="Ver el pico de cada"
