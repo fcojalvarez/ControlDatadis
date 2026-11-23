@@ -322,6 +322,11 @@ export type MaxPowerReading = {
 };
 
 export function normalizeMaxPower(rows: MaxPowerRaw[]): MaxPowerReading[] {
+  // Datadis no documenta la unidad de maxPower y no todas las distribuidoras la usan igual:
+  // unas devuelven vatios (4250) y otras kilovatios (4.25). Un pico doméstico está entre unos
+  // cientos de vatios y unas decenas de kW, así que si algún valor pasa de 100 son vatios.
+  const values = rows.map((r) => Number(r.maxPower)).filter((v) => Number.isFinite(v) && v > 0);
+  const inWatts = values.some((v) => v > 100);
   return rows
     .map((r) => {
       const m = r.date.match(/^(\d{4})[/-](\d{2})/);
@@ -329,11 +334,11 @@ export function normalizeMaxPower(rows: MaxPowerRaw[]): MaxPowerReading[] {
         key: m ? `${m[1]}-${m[2]}` : r.date,
         date: r.date,
         time: r.time,
-        // Datadis devuelve W
-        kw: Number(r.maxPower) / 1000,
+        kw: inWatts ? Number(r.maxPower) / 1000 : Number(r.maxPower),
         period: r.period,
       };
     })
+    .filter((r) => Number.isFinite(r.kw))
     .sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
 }
 

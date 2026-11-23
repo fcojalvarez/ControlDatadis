@@ -82,7 +82,7 @@ export type MaxPowerRaw = {
   cups: string;
   date: string; // YYYY/MM/DD
   time: string; // HH:MM
-  maxPower: number; // W
+  maxPower: number; // W o kW según la distribuidora (ver normalizeMaxPower)
   period: string; // 'VALLE' | 'LLANO' | 'PUNTA' | 'P1'...
 };
 
