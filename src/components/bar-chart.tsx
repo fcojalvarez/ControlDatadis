@@ -33,6 +33,8 @@ type Props = {
   unit?: string;
   /** Resumen que se ve en el panel superior mientras no hay ninguna barra tocada */
   idle?: string;
+  /** Línea secundaria del resumen */
+  idleSub?: string;
 };
 
 const AXIS_W = 40;
@@ -60,6 +62,7 @@ export function BarChart({
   markers = [],
   unit,
   idle,
+  idleSub,
 }: Props) {
   const c = useTheme();
   const [width, setWidth] = useState(0);
@@ -118,6 +121,7 @@ export function BarChart({
         ) : (
           <View style={{ gap: 2 }}>
             {idle ? <T style={{ fontWeight: '700' }}>{idle}</T> : null}
+            {idleSub ? <T variant="small">{idleSub}</T> : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="hand-left-outline" size={14} color={c.textSecondary} />
               <T variant="small">Toca una barra para ver su valor</T>

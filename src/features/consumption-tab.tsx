@@ -202,8 +202,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     ? [{ value: p1, color: c.danger, label: `contratada ${fmtNum(p1, 2)} kW` }, ...(p2 !== p1 ? [{ value: p2, color: c.warning, label: `valle ${fmtNum(p2, 2)} kW` }] : [])]
     : [];
   const powerLegend = [
-    { color: c.tint, label: 'Pico de tu curva' },
-    { color: markerColor, label: 'Pico medido (15 min)' },
+    { color: c.tint, label: 'Media de 1 h más alta' },
+    { color: markerColor, label: 'Pico medido por el contador (15 min)' },
   ];
 
   const selDay = isDay ? (s.daily[0] ?? null) : null;
@@ -383,9 +383,21 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     : unit === 'kw'
       ? `En kW · ${isDay ? every15 : 'línea roja: tu contratada'}`
       : `En kWh${isDay || nDays <= 31 ? ` · datos ${every15}` : ''}`;
+  // Pico medido por el contador dentro de las fechas elegidas (Datadis da uno por mes y periodo)
+  let measuredMax: MaxPowerReading | null = null;
+  for (const [day, m] of measured.byDay) {
+    if (day >= range.from && day <= range.to && (!measuredMax || m.kw > measuredMax.kw)) measuredMax = m;
+  }
+  const measuredLimit = measuredMax ? (/valle/i.test(measuredMax.period) ? p2 : p1) : 0;
+  const measuredWhen = measuredMax ? `${dayMonth(measuredMax.date)} a las ${measuredMax.time}` : '';
+  const curveTop = Math.max(0, ...curvePeaks.byHour);
+  const avgLabel = mt === 1 ? 'Media de 15 min más alta' : 'Media de 1 h más alta';
+  const chartIdleSub = unit === 'kw' && measuredMax ? `${avgLabel}: ${fmtKW(curveTop, 2)}` : undefined;
   const chartIdle =
     unit === 'kw'
-      ? `Pico ${fmtKW(Math.max(0, ...curvePeaks.byHour), 2)}${p1 ? ` · contratada ${fmtKW(p1, 2)}` : ''}`
+      ? measuredMax
+        ? `Pico medido: ${fmtKW(measuredMax.kw, 2)} · ${measuredWhen}${measuredLimit ? ` (${fmtNum((measuredMax.kw / measuredLimit) * 100, 0)} % de tu potencia)` : ''}`
+        : `${avgLabel}: ${fmtKW(curveTop, 2)}${p1 ? ` · contratada ${fmtKW(p1, 2)}` : ''}`
       : isDay
         ? `Total ${fmtKWh(s.total, 1)}`
         : view === 'dias'
@@ -456,7 +468,16 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               ) : nDays > 62 ? (
                 <Mini label="Media mensual" value={fmtKWh(s.monthly.length ? s.total / s.monthly.length : 0, 0)} />
               ) : null}
-              <Mini label="Pico" value={fmtKW(curveMax, 1)} color={p1 && curveMax > p1 ? c.danger : undefined} />
+              {measuredMax ? (
+                <Mini
+                  label="Pico medido"
+                  value={fmtKW(measuredMax.kw, 2)}
+                  sub={measuredWhen.replace(' a las', '')}
+                  color={measuredLimit && measuredMax.kw > measuredLimit ? c.danger : undefined}
+                />
+              ) : (
+                <Mini label={mt === 1 ? 'Máx. 15 min' : 'Máx. 1 h'} value={fmtKW(curveMax, 1)} color={p1 && curveMax > p1 ? c.danger : undefined} />
+              )}
             </View>
           </Card>
 
@@ -538,6 +559,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                 labelEvery={chart.every}
                 unit={unit === 'kw' ? 'kW' : 'kWh'}
                 idle={chartIdle}
+                idleSub={chartIdleSub}
               />
             ) : null}
 
@@ -660,7 +682,15 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   );
 }
 
-function Mini({ label, value, color }: { label: string; value: string; color?: string }) {
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** «16 nov» a partir de YYYY/MM/DD o YYYY-MM-DD */
+function dayMonth(date: string): string {
+  const m = date.match(/^\d{4}[/-](\d{2})[/-](\d{2})/);
+  return m ? `${Number(m[2])} ${MONTH_ABBR[Number(m[1]) - 1]}` : date;
+}
+
+function Mini({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   const c = useTheme();
   return (
     <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
@@ -670,6 +700,11 @@ function Mini({ label, value, color }: { label: string; value: string; color?: s
       <T style={{ fontWeight: '800', fontSize: 16, color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </T>
+      {sub ? (
+        <T variant="small" numberOfLines={1}>
+          {sub}
+        </T>
+      ) : null}
     </View>
   );
 }
