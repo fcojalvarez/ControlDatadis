@@ -50,7 +50,21 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
   const limitLine = mp.contracted[0] ? [{ value: mp.contracted[0], color: c.danger, label: `contratada ${fmtNum(mp.contracted[0], 2)} kW` }] : [];
 
   return (
-    <Screen refreshing={mp.loading && !!mp.data} onRefresh={mp.refresh}>
+    <Screen
+      refreshing={mp.loading && !!mp.data}
+      onRefresh={mp.refresh}
+      header={
+        // En la vista por día o semana, el mes queda fijo arriba al hacer scroll
+        view !== 'mes' ? (
+          <Stepper
+            label={cap(fmtMonthLong(month))}
+            canPrev={month > bounds.min}
+            canNext={month < bounds.max}
+            onPrev={() => setMonth((m) => addMonths(m, -1))}
+            onNext={() => setMonth((m) => addMonths(m, 1))}
+          />
+        ) : undefined
+      }>
       <SavedDataNotice hasData={!!mp.data} error={mp.error} stale={mp.stale} ts={mp.updatedAt} onRetry={mp.refresh} />
       {mp.loading && !mp.data ? <InlineLoading text="Cargando los picos medidos…" /> : null}
 
@@ -81,13 +95,6 @@ export function MaxPowerTab({ supply }: { supply: SupplyRef }) {
           )
         ) : (
           <>
-            <Stepper
-              label={cap(fmtMonthLong(month))}
-              canPrev={month > bounds.min}
-              canNext={month < bounds.max}
-              onPrev={() => setMonth((m) => addMonths(m, -1))}
-              onNext={() => setMonth((m) => addMonths(m, 1))}
-            />
             <DayWeekView
               supply={supply}
               month={month}

@@ -418,12 +418,17 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
       <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={22} color={showInfo ? c.tint : c.textSecondary} />
     </Pressable>
   );
+  // Fechas cortas («2 nov») si todo el rango es del mismo año
+  const shortDate = (k: string) => (range.from.slice(0, 4) === range.to.slice(0, 4) ? dayMonth(k) : fmtDate(k));
   const curveMax = Math.max(0, ...[...curvePeaks.byDay.values()].map((p) => p.kw));
 
   return (
-    <Screen refreshing={q.loading && readings.length > 0} onRefresh={q.refresh}>
-      {/* ---------- Periodo ---------- */}
-      <View style={{ gap: Spacing.two }}>
+    <Screen
+      refreshing={q.loading && readings.length > 0}
+      onRefresh={q.refresh}
+      header={
+        /* ---------- Periodo (fijo arriba al hacer scroll) ---------- */
+        <View style={{ gap: Spacing.two }}>
         <Stepper
           label={rangeLabel(range)}
           canPrev={canStepRange(range, -1, bounds)}
@@ -440,8 +445,9 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
           presets={rangePresets(bounds)}
           onApply={setRange}
         />
-        {q.loading && readings.length > 0 ? <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} /> : null}
-      </View>
+          {q.loading && readings.length > 0 ? <InlineLoading text={q.pending ? `Descargando: faltan ${q.pending} meses` : 'Actualizando…'} /> : null}
+        </View>
+      }>
 
       {loadingFirst ? <Loading text="Descargando tu consumo…" /> : null}
       <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
@@ -640,11 +646,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
           {/* ---------- Detalles ---------- */}
           <Card title="Detalles">
-            {s.peak && <KeyValue k="Hora de más consumo" v={`${fmtDate(s.peak.day)}, ${hhmm(s.peak.start)}`} hint={fmtKWh(s.peak.kwh, 2)} />}
-            {s.maxDay && <KeyValue k="Día de más consumo" v={fmtDate(s.maxDay.key)} hint={fmtKWh(s.maxDay.total, 1)} />}
-            {s.minDay && <KeyValue k="Día de menos consumo" v={fmtDate(s.minDay.key)} hint={fmtKWh(s.minDay.total, 1)} />}
+            {s.peak && <KeyValue k="Hora de más consumo" v={`${shortDate(s.peak.day)}, ${hhmm(s.peak.start)}`} hint={fmtKWh(s.peak.kwh, 2)} />}
+            {s.maxDay && <KeyValue k="Día de más consumo" v={shortDate(s.maxDay.key)} hint={fmtKWh(s.maxDay.total, 1)} />}
+            {s.minDay && <KeyValue k="Día de menos consumo" v={shortDate(s.minDay.key)} hint={fmtKWh(s.minDay.total, 1)} />}
             <KeyValue k="Siempre encendido" v={fmtKW(s.baseLoadKW, 2)} hint={`≈ ${fmtEur(s.baseLoadKW * 24 * 365 * flatPrice(tariff.energy))}/año`} />
-            <KeyValue k="Laborables / fin de semana" v={`${fmtKWh(avg(s.weekdayAvg.slice(0, 5)), 1)} / ${fmtKWh(avg(s.weekdayAvg.slice(5)), 1)}`} />
+            <KeyValue k="Laborable / fin de semana" v={`${fmtNum(avg(s.weekdayAvg.slice(0, 5)), 1)} / ${fmtKWh(avg(s.weekdayAvg.slice(5)), 1)}`} hint="media por día" />
             <KeyValue k="Lecturas estimadas" v={`${fmtNum((s.estimatedCount / readings.length) * 100, 1)} %`} />
           </Card>
 
@@ -697,7 +703,7 @@ function Mini({ label, value, sub, color }: { label: string; value: string; sub?
   const c = useTheme();
   return (
     <View style={[styles.mini, { backgroundColor: c.backgroundElement }]}>
-      <T variant="small" numberOfLines={1}>
+      <T variant="small" numberOfLines={1} adjustsFontSizeToFit>
         {label}
       </T>
       <T style={{ fontWeight: '800', fontSize: 16, color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>

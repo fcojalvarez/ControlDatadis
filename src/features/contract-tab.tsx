@@ -6,11 +6,13 @@ import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import { currentContract } from '@/lib/contracts';
-import { fmtDate, fmtNum } from '@/lib/format';
+import { fmtDate, fmtNum, titleCase } from '@/lib/format';
 
 import { useContract } from './queries';
 import { POINT_TYPES, type SupplyRef } from './types';
 
+/** Número de Datadis (a veces texto con punto) con coma decimal */
+const kwText = (v: unknown) => (Number.isFinite(Number(v)) ? fmtNum(Number(v), 2) : String(v));
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
 export function ContractTab({ supply }: { supply: SupplyRef }) {
@@ -35,7 +37,7 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
       {ct ? (
         <Card>
           <T variant="label">Comercializadora</T>
-          <T variant="subtitle">{str(ct.marketer)}</T>
+          <T variant="subtitle">{titleCase(str(ct.marketer), 'company')}</T>
           <T variant="small">Desde {fmtDate(ct.startDate)}{ct.endDate ? ` hasta ${fmtDate(ct.endDate)}` : ''}</T>
           <View style={styles.chips}>
             {kw.length ? <Chip text={`${[...new Set(kw)].map((k) => fmtNum(k, 2)).join(' / ')} kW`} strong /> : null}
@@ -51,10 +53,10 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
           title="Potencia y tarifa"
           info="Potencia contratada: lo máximo que puedes tener encendido a la vez. P1 se aplica de lunes a viernes de 8 a 24 h y P2 en valle.\n\nBIE: potencia máxima admisible de tu instalación (el límite técnico).\n\nControl de potencia: ICP es el limitador que corta; con maxímetro se factura el exceso.">
           <KeyValue k="Potencia P1 / P2" v={kw.length ? kw.map((k) => fmtNum(k, 2)).join(' / ') + ' kW' : '—'} />
-          <KeyValue k="Máxima admisible (BIE)" v={ct.maxPowerInstall ? `${str(ct.maxPowerInstall)} kW` : '—'} />
+          <KeyValue k="Máxima admisible (BIE)" v={ct.maxPowerInstall ? `${kwText(ct.maxPowerInstall)} kW` : '—'} />
           <KeyValue k="Tarifa de acceso" v={`${str(ct.accessFare)}${ct.codeFare ? ` (${ct.codeFare})` : ''}`} />
-          <KeyValue k="Discriminación" v={str(ct.timeDiscrimination)} />
-          <KeyValue k="Tensión" v={str(ct.tension)} />
+          <KeyValue k="Discriminación" v={titleCase(str(ct.timeDiscrimination), 'sentence')} />
+          <KeyValue k="Tensión" v={titleCase(str(ct.tension), 'sentence')} />
           <KeyValue k="Control de potencia" v={str(ct.modePowerControl)} />
         </Card>
       ) : null}
@@ -65,8 +67,8 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
         info="El CUPS es el código único de tu punto de luz: lo necesitas para cambiar de comercializadora o hacer cualquier gestión.\n\nLa distribuidora es la dueña de la red y del contador; no cambia aunque cambies de compañía.">
         <KeyValue k="CUPS" v={supply.cups} />
         <KeyValue k="Dirección" v={str(supply.address)} />
-        {ct ? <KeyValue k="Ubicación" v={[ct.postalCode, ct.municipality].filter(Boolean).join(' · ') || '—'} /> : null}
-        <KeyValue k="Distribuidora" v={str(supply.distributor)} />
+        {ct ? <KeyValue k="Ubicación" v={[ct.postalCode, ct.municipality].filter(Boolean).map((x) => titleCase(String(x))).join(' · ') || '—'} /> : null}
+        <KeyValue k="Distribuidora" v={titleCase(str(supply.distributor), 'company')} />
         <KeyValue k="Contador" v={POINT_TYPES[supply.pointType] ?? String(supply.pointType)} />
       </Card>
 
@@ -75,8 +77,8 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
         <Card
           title="Autoconsumo"
           info="Datos de tu instalación registrados por la distribuidora. El CAU es el código de la instalación y el coeficiente de reparto, la parte de la generación que te corresponde en autoconsumos compartidos.">
-          <KeyValue k="Modalidad" v={str(ct.selfConsumptionTypeDesc)} />
-          <KeyValue k="Potencia instalada" v={installed !== null && installed !== undefined && installed !== '' ? `${str(installed)} kW` : '—'} />
+          <KeyValue k="Modalidad" v={titleCase(str(ct.selfConsumptionTypeDesc), 'sentence')} />
+          <KeyValue k="Potencia instalada" v={installed !== null && installed !== undefined && installed !== '' ? `${kwText(installed)} kW` : '—'} />
           <KeyValue k="CAU" v={str(ct.cau)} />
           <KeyValue k="Coeficiente de reparto" v={str(ct.partitionCoefficient)} />
         </Card>
@@ -128,7 +130,7 @@ function PreviousContract({ ct }: { ct: ContractDetail }) {
   return (
     <KeyValue
       k={`${fmtDate(ct.startDate)} → ${fmtDate(ct.endDate)}`}
-      hint={str(ct.marketer)}
+      hint={titleCase(str(ct.marketer), 'company')}
       v={ct.contractedPowerkW?.length ? `${ct.contractedPowerkW.map((k) => fmtNum(k, 2)).join(' / ')} kW` : '—'}
     />
   );

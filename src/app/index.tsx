@@ -14,7 +14,7 @@ import { peakStorageKey } from '@/features/peaks';
 import { DAY, useCachedQuery } from '@/hooks/use-cached-query';
 import { useTheme } from '@/hooks/use-theme';
 import type { CompactReading } from '@/lib/consumption';
-import { fmtDate, fmtNum, ym } from '@/lib/format';
+import { cap, fmtDate, fmtMonthLong, fmtNum, titleCase, ym } from '@/lib/format';
 import { cacheGet, getJSON } from '@/lib/storage';
 import { currentContract } from '@/lib/contracts';
 
@@ -143,14 +143,14 @@ function SupplyCard({ s }: { s: Supply }) {
               {s.address || s.cups}
             </T>
             <T variant="small" numberOfLines={1}>
-              {[s.municipality, ct?.marketer].filter(Boolean).join(' · ')}
+              {[s.municipality ? titleCase(s.municipality) : '', ct?.marketer ? titleCase(String(ct.marketer), 'company') : ''].filter(Boolean).join(' · ')}
             </T>
           </View>
           <Ionicons name="chevron-forward" size={22} color={c.textSecondary} />
         </View>
         <View style={styles.tiles}>
           <MonthTile cups={s.cups} />
-          <Tile icon="flash-outline" label="Contratada" value={kw.length ? `${fmtNum(Math.max(...kw), 2)} kW` : '—'} />
+          <Tile label="Contratada" value={kw.length ? `${fmtNum(Math.max(...kw), 2)} kW` : '—'} />
           <PeakTile cups={s.cups} />
         </View>
       </Card>
@@ -158,16 +158,13 @@ function SupplyCard({ s }: { s: Supply }) {
   );
 }
 
-function Tile({ icon, label, value, color }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; color?: string }) {
+function Tile({ label, value, color }: { label: string; value: string; color?: string }) {
   const c = useTheme();
   return (
     <View style={[styles.tile, { backgroundColor: c.backgroundElement }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Ionicons name={icon} size={14} color={c.textSecondary} />
-        <T variant="small" numberOfLines={1}>
-          {label}
-        </T>
-      </View>
+      <T variant="small" numberOfLines={1} adjustsFontSizeToFit>
+        {label}
+      </T>
       <T style={{ fontSize: 17, fontWeight: '800', color: color ?? c.text }} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </T>
@@ -185,7 +182,7 @@ function MonthTile({ cups }: { cups: string }) {
       cacheGet<{ rows: CompactReading[] }>(key).then((e) => setKwh(e ? e.data.rows.reduce((a, r) => a + (Number(r[2]) || 0), 0) : null));
     }, [username, settings.activeNif, cups]),
   );
-  return <Tile icon="speedometer-outline" label="Este mes" value={kwh === null ? '—' : `${fmtNum(kwh, 0)} kWh`} />;
+  return <Tile label={cap(fmtMonthLong(ym(new Date()).replace('/', '-')).split(' ')[0])} value={kwh === null ? '—' : `${fmtNum(kwh, 0)} kWh`} />;
 }
 
 /** Último pico de potencia medido (se guarda al abrir el suministro) */
@@ -199,7 +196,7 @@ function PeakTile({ cups }: { cups: string }) {
     }, [username, cups]),
   );
   const color = v.pct === null ? undefined : v.pct > 1 ? c.danger : v.pct > 0.85 ? c.warning : undefined;
-  return <Tile icon="pulse-outline" label="Pico" value={v.kw === null ? '—' : `${fmtNum(v.kw, 2)} kW`} color={color} />;
+  return <Tile label="Pico" value={v.kw === null ? '—' : `${fmtNum(v.kw, 2)} kW`} color={color} />;
 }
 
 const styles = StyleSheet.create({

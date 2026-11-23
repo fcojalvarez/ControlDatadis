@@ -41,12 +41,17 @@ const AXIS_W = 40;
 const BOTTOM = 24;
 const TOP = 10;
 
-function niceMax(v: number): number {
-  if (v <= 0) return 1;
-  const exp = Math.pow(10, Math.floor(Math.log10(v)));
-  const f = v / exp;
-  const nice = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
-  return nice * exp;
+/**
+ * Escala del eje Y con números redondos: el paso es 1, 2 o 5 (× potencia de 10) y el máximo es
+ * un múltiplo del paso, con 3 a 6 marcas (p. ej. 0 · 1 · 2 · 3 · 4 · 5).
+ */
+function niceScale(v: number): { max: number; step: number } {
+  if (v <= 0) return { max: 1, step: 0.25 };
+  const rough = v / 4;
+  const exp = Math.pow(10, Math.floor(Math.log10(rough)));
+  const f = rough / exp;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+  return { max: Math.ceil(v / step - 1e-9) * step, step };
 }
 
 export function BarChart({
@@ -72,9 +77,8 @@ export function BarChart({
 
   const totals = data.map((d) => d.segments.reduce((s, x) => s + x.value, 0));
   const peaks = data.map((d) => (mode === 'stacked' ? d.segments.reduce((s, x) => s + x.value, 0) : Math.max(0, ...d.segments.map((x) => x.value))));
-  const maxVal = niceMax(
-    Math.max(0, ...peaks, ...referenceLines.map((r) => r.value), ...markers.map((m) => m?.value ?? 0)) * 1.05,
-  );
+  const scale = niceScale(Math.max(0, ...peaks, ...referenceLines.map((r) => r.value), ...markers.map((m) => m?.value ?? 0)) * 1.04);
+  const maxVal = scale.max;
   const plotH = height - BOTTOM - TOP;
 
   const available = Math.max(0, width - AXIS_W);
@@ -84,9 +88,8 @@ export function BarChart({
   const groupW = Math.max(2, slot * 0.74);
   const every = labelEvery ?? Math.max(1, Math.ceil(40 / slot));
   const y = (v: number) => TOP + plotH - (v / maxVal) * plotH;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * maxVal);
-  const tickStep = maxVal / 4;
-  const tickDigits = Number.isInteger(tickStep) ? 0 : Math.min(3, Math.max(1, Math.ceil(-Math.log10(tickStep)) + (Number.isInteger(tickStep * 10 ** Math.ceil(-Math.log10(tickStep))) ? 0 : 1)));
+  const ticks = Array.from({ length: Math.round(maxVal / scale.step) + 1 }, (_, i) => i * scale.step);
+  const tickDigits = scale.step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(scale.step) - 1e-9));
 
   const sel = selected !== null && selected < data.length ? selected : null;
   const selDatum = sel !== null ? data[sel] : null;
@@ -139,7 +142,7 @@ export function BarChart({
         <View style={{ flexDirection: 'row' }}>
           <Svg width={AXIS_W} height={height}>
             {ticks.map((t, i) => (
-              <SvgText key={i} x={AXIS_W - 6} y={y(t) + 4} fontSize={11} fill={c.textSecondary} textAnchor="end">
+              <SvgText key={i} x={AXIS_W - 6} y={y(t) + 4} fontSize={12} fill={c.textSecondary} textAnchor="end">
                 {fmtNum(t, tickDigits)}
               </SvgText>
             ))}
@@ -180,7 +183,7 @@ export function BarChart({
                       />
                     ) : null}
                     {i % every === 0 && (
-                      <SvgText x={i * slot + slot / 2} y={height - 7} fontSize={11} fill={c.textSecondary} textAnchor="middle">
+                      <SvgText x={i * slot + slot / 2} y={height - 7} fontSize={12} fill={c.textSecondary} textAnchor="middle">
                         {d.label}
                       </SvgText>
                     )}

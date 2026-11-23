@@ -3,7 +3,7 @@ import { Stack } from 'expo-router/stack';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { TabBar } from '@/components/ui';
+import { BottomTabs } from '@/components/ui';
 import { BillsTab } from '@/features/bills-tab';
 import { ConsumptionTab } from '@/features/consumption-tab';
 import { ContractTab } from '@/features/contract-tab';
@@ -15,13 +15,13 @@ import { useTheme } from '@/hooks/use-theme';
 
 type Tab = 'resumen' | 'consumo' | 'facturas' | 'potencia' | 'contrato';
 
-const TABS: { value: Tab; label: string }[] = [
-  { value: 'resumen', label: 'Resumen' },
-  { value: 'consumo', label: 'Consumo' },
-  { value: 'facturas', label: 'Facturas' },
-  { value: 'potencia', label: 'Potencia' },
-  { value: 'contrato', label: 'Contrato' },
-];
+const TABS = [
+  { value: 'resumen', label: 'Resumen', icon: 'home-outline', iconActive: 'home' },
+  { value: 'consumo', label: 'Consumo', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
+  { value: 'facturas', label: 'Facturas', icon: 'receipt-outline', iconActive: 'receipt' },
+  { value: 'potencia', label: 'Potencia', icon: 'flash-outline', iconActive: 'flash' },
+  { value: 'contrato', label: 'Contrato', icon: 'document-text-outline', iconActive: 'document-text' },
+] as const satisfies { value: Tab; label: string; icon: string; iconActive: string }[];
 
 export default function SupplyScreen() {
   const c = useTheme();
@@ -55,12 +55,12 @@ export default function SupplyScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <Stack.Screen options={{ title: supply.address || supply.cups }} />
-      <TabBar options={TABS} value={tab} onChange={setTab} />
       {tab === 'resumen' && <SummaryTab supply={supply} onOpen={setTab} />}
       {tab === 'consumo' && <ConsumptionTab supply={supply} />}
       {tab === 'facturas' && <BillsTab supply={supply} />}
       {tab === 'potencia' && <MaxPowerTab supply={supply} />}
       {tab === 'contrato' && <ContractTab supply={supply} />}
+      <BottomTabs options={[...TABS]} value={tab} onChange={setTab} />
     </View>
   );
 }

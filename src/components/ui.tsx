@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -59,14 +60,17 @@ export function Screen({
   refreshing,
   onRefresh,
   scrollEnabled = true,
+  header,
 }: {
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   scrollEnabled?: boolean;
+  /** Barra fija encima del contenido (p. ej. el periodo): no se va al hacer scroll */
+  header?: ReactNode;
 }) {
   const c = useTheme();
-  return (
+  const scroll = (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={styles.screen}
@@ -78,6 +82,52 @@ export function Screen({
       }>
       <View style={styles.inner}>{children}</View>
     </ScrollView>
+  );
+  if (!header) return scroll;
+  return (
+    <View style={{ flex: 1, backgroundColor: c.background }}>
+      <View style={[styles.stickyHeader, { borderBottomColor: c.border, backgroundColor: c.background }]}>
+        <View style={styles.stickyInner}>{header}</View>
+      </View>
+      {scroll}
+    </View>
+  );
+}
+
+/** Pestañas inferiores con icono (al alcance del pulgar) */
+export function BottomTabs<V extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: V; label: string; icon: keyof typeof Ionicons.glyphMap; iconActive: keyof typeof Ionicons.glyphMap }[];
+  value: V;
+  onChange: (v: V) => void;
+}) {
+  const c = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.bottomTabs, { borderTopColor: c.border, backgroundColor: c.card, paddingBottom: Math.max(insets.bottom, 6) }]}>
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="tab"
+            accessibilityLabel={o.label}
+            accessibilityState={{ selected: active }}
+            style={styles.bottomTab}>
+            <View style={[styles.bottomIcon, active ? { backgroundColor: `${c.tint}22` } : null]}>
+              <Ionicons name={active ? o.iconActive : o.icon} size={22} color={active ? c.tint : c.textSecondary} />
+            </View>
+            <T style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? c.tint : c.textSecondary }} numberOfLines={1}>
+              {o.label}
+            </T>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -213,23 +263,21 @@ export function KeyValue({ k, v, hint }: { k: string; v: ReactNode; hint?: strin
   const c = useTheme();
   return (
     <View style={[styles.kv, { borderBottomColor: c.border }]}>
-      <View style={{ flex: 1 }}>
-        <T variant="small" style={{ color: c.textSecondary }}>
-          {k}
-        </T>
+      <T style={{ flex: 1, color: c.text }}>{k}</T>
+      <View style={{ maxWidth: '62%', alignItems: 'flex-end' }}>
+        {typeof v === 'string' || typeof v === 'number' ? (
+          <T style={{ textAlign: 'right', fontWeight: '700' }} selectable>
+            {v}
+          </T>
+        ) : (
+          v
+        )}
         {hint ? (
-          <T variant="small" style={{ fontSize: 12, opacity: 0.8 }}>
+          <T variant="small" style={{ fontSize: 12, textAlign: 'right' }}>
             {hint}
           </T>
         ) : null}
       </View>
-      {typeof v === 'string' || typeof v === 'number' ? (
-        <T style={{ flex: 1.3, textAlign: 'right', fontWeight: '500' }} selectable>
-          {v}
-        </T>
-      ) : (
-        <View style={{ flex: 1.3, alignItems: 'flex-end' }}>{v}</View>
-      )}
     </View>
   );
 }
@@ -294,7 +342,7 @@ export function Disclosure({ title, children }: { title: string; children: React
         style={[styles.disclosure, { borderColor: c.border }]}
         accessibilityRole="button">
         <T style={{ color: c.tint, fontWeight: '600', flex: 1 }}>{title}</T>
-        <T style={{ color: c.tint, fontWeight: '700' }}>{open ? '▲' : '▼'}</T>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={c.tint} />
       </Pressable>
       {open ? <View style={{ marginTop: Spacing.two }}>{children}</View> : null}
     </View>
@@ -625,6 +673,11 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: 'row', borderRadius: 12, padding: 3 },
   segment: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 9, borderColor: 'transparent' },
   tabBar: { paddingHorizontal: Spacing.one, flexGrow: 1 },
+  stickyHeader: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  stickyInner: { width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
+  bottomTabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6 },
+  bottomTab: { flex: 1, alignItems: 'center', gap: 2 },
+  bottomIcon: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 3 },
   tab: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 6, paddingVertical: 12, borderBottomWidth: 3 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },

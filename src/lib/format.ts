@@ -96,3 +96,27 @@ export function maskCups(cups: string): string {
   if (cups.length < 10) return cups;
   return `${cups.slice(0, 6)}…${cups.slice(-6)}`;
 }
+
+/**
+ * Textos que Datadis da en MAYÚSCULAS, más legibles:
+ *  - 'name' (empresas, municipios): «COMERCIALIZADORA EJEMPLO SL» → «Comercializadora Ejemplo SL»
+ *  - 'sentence' (descripciones): «TARIFA DE TRES PERIODOS» → «Tarifa de tres periodos»
+ * Siglas y códigos (SL, S.A.U., I-DE, 2.0TD) se respetan. Si el texto ya trae minúsculas, no se toca.
+ */
+export function titleCase(s: string, mode: 'name' | 'company' | 'sentence' = 'name'): string {
+  if (s !== s.toUpperCase()) return s;
+  const keep = new Set(['SL', 'SA', 'SAU', 'SLU', 'CB', 'SC']);
+  const lower = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'y', 'e', 'en', 'a']);
+  return s
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map((w, i) => {
+      const up = w.toUpperCase();
+      if (keep.has(up) || /\d/.test(w) || (w.length <= 6 && /[-.]/.test(w) && /[a-z]/.test(w))) return up;
+      // En nombres de empresa, las palabras de 2-3 letras suelen ser siglas (UFD, EDP)
+      if (mode === 'company' && w.length >= 2 && w.length <= 3 && !lower.has(w)) return up;
+      if (i > 0 && (mode === 'sentence' || lower.has(w))) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join('');
+}
