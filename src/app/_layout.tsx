@@ -3,6 +3,7 @@ import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { SessionProvider, useSession } from '@/context/session';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -44,11 +45,13 @@ function RootNavigator() {
 export default function RootLayout() {
   const scheme = useColorScheme();
   return (
-    <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <SessionProvider>
-        <StatusBar style="auto" />
-        <RootNavigator />
-      </SessionProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <SessionProvider>
+          <StatusBar style="auto" />
+          <RootNavigator />
+        </SessionProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -104,7 +104,7 @@ export function Card({
   const [showInfo, setShowInfo] = useState(false);
   if (onPress) {
     return (
-      <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+      <Pressable onPress={onPress} onLongPress={() => {}} delayLongPress={300} accessibilityRole="button" style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
         <Card
           title={title}
           subtitle={subtitle}

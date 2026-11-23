@@ -6,6 +6,7 @@ import { Card, Screen, T } from '@/components/ui';
 import { UpdateCard } from '@/components/update';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
+import { SECTIONS } from '@/features/summary-tab';
 import { useTheme } from '@/hooks/use-theme';
 import { fmtNum } from '@/lib/format';
 import { cacheClear, cacheStats } from '@/lib/storage';
@@ -54,6 +55,34 @@ export default function SettingsScreen() {
           label="Tengo placas solares"
           right={<Switch value={settings.hasSolar} onValueChange={(v) => updateSettings({ hasSolar: v })} trackColor={{ true: c.tint }} />}
         />
+      </Card>
+
+      {/* ---------- Tarjetas del Resumen ---------- */}
+      <Card title="Tarjetas del Resumen" info="Elige qué tarjetas se ven en el Resumen. Para cambiar su orden, mantén pulsada una tarjeta en el Resumen y arrástrala.">
+        {SECTIONS.map((sec) => {
+          const visible = !settings.summaryLayout.hidden.includes(sec.id);
+          return (
+            <Item
+              key={sec.id}
+              icon={sec.icon}
+              label={sec.label}
+              right={
+                <Switch
+                  value={visible}
+                  onValueChange={(v) =>
+                    updateSettings({
+                      summaryLayout: {
+                        order: settings.summaryLayout.order,
+                        hidden: v ? settings.summaryLayout.hidden.filter((x) => x !== sec.id) : [...settings.summaryLayout.hidden, sec.id],
+                      },
+                    })
+                  }
+                  trackColor={{ true: c.tint }}
+                />
+              }
+            />
+          );
+        })}
       </Card>
 
       {/* ---------- NIF autorizados ---------- */}

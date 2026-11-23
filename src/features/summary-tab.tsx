@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarChart, SplitBar } from '@/components/bar-chart';
-import { DraggableList } from '@/components/draggable-list';
+import { SortableList } from '@/components/sortable';
 import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
@@ -20,9 +20,9 @@ import { TripRiskSummaryCard } from './trip-risk';
 import { useSupplyTariffs } from './tariffs';
 import { rangeMonths, type SupplyRef } from './types';
 
-type SectionId = 'plomos' | 'mes' | 'pasado' | 'anio' | 'consejos' | 'historico';
+export type SectionId = 'plomos' | 'mes' | 'pasado' | 'anio' | 'consejos' | 'historico';
 
-const SECTIONS: { id: SectionId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+export const SECTIONS: { id: SectionId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'plomos', label: '¿Saltarán los plomos?', icon: 'warning-outline' },
   { id: 'mes', label: 'Mes en curso', icon: 'today-outline' },
   { id: 'pasado', label: 'Mes pasado', icon: 'calendar-outline' },
@@ -37,52 +37,7 @@ function fullOrder(saved: string[]): SectionId[] {
   return [...valid, ...SECTIONS.map((x) => x.id).filter((id) => !valid.includes(id))];
 }
 
-/** Editor del orden (arrastrando) y visibilidad de las tarjetas del Resumen */
-function LayoutEditor({ onDone, onDragStateChange }: { onDone: () => void; onDragStateChange: (dragging: boolean) => void }) {
-  const c = useTheme();
-  const { settings, updateSettings } = useSession();
-  const order = fullOrder(settings.summaryLayout.order);
-  const hidden = settings.summaryLayout.hidden;
-  const reorder = useCallback((o: SectionId[]) => updateSettings({ summaryLayout: { order: o, hidden } }), [updateSettings, hidden]);
-  const toggle = (id: SectionId) =>
-    updateSettings({ summaryLayout: { order, hidden: hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id] } });
-  return (
-    <Card title="Ordenar tarjetas" right={<T style={{ color: c.tint, fontWeight: '700' }} onPress={onDone}>Hecho</T>}>
-      <T variant="small">Arrastra desde ≡ para cambiar el orden. Toca el ojo para ocultar o mostrar.</T>
-      <DraggableList
-        items={order}
-        onReorder={reorder}
-        onDragStateChange={onDragStateChange}
-        renderRow={(id) => {
-          const sec = SECTIONS.find((x) => x.id === id)!;
-          const off = hidden.includes(id);
-          return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 4 }}>
-              <Ionicons name={sec.icon} size={20} color={off ? c.textSecondary : c.tint} />
-              <T style={{ flex: 1, color: off ? c.textSecondary : c.text, textDecorationLine: off ? 'line-through' : 'none' }}>{sec.label}</T>
-              <Pressable onPress={() => toggle(id)} hitSlop={10} accessibilityLabel={off ? 'Mostrar' : 'Ocultar'}>
-                <Ionicons name={off ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textSecondary} />
-              </Pressable>
-            </View>
-          );
-        }}
-      />
-    </Card>
-  );
-}
-
-export function SummaryTab({
-  supply,
-  onOpen,
-  editing = false,
-  onDoneEditing,
-}: {
-  supply: SupplyRef;
-  onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void;
-  /** Modo de ordenar tarjetas (se activa desde la cabecera) */
-  editing?: boolean;
-  onDoneEditing?: () => void;
-}) {
+export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
   const [dragging, setDragging] = useState(false);
   const c = useTheme();
   const { current: tariff } = useSupplyTariffs(supply.cups);
@@ -127,8 +82,15 @@ export function SummaryTab({
   const prevName = fmtMonthLong(prev).split(' ')[0];
   const legendLine = PERIODS.map((p) => `${PERIOD_LABELS[p]} ${fmtNum(prevS.total ? (prevS.byPeriod[p] / prevS.total) * 100 : 0, 0)} %`).join(' · ');
 
-  const { settings } = useSession();
-  const orderedIds = fullOrder(settings.summaryLayout.order).filter((id) => !settings.summaryLayout.hidden.includes(id));
+  const { settings, updateSettings } = useSession();
+  const hiddenIds = settings.summaryLayout.hidden;
+  const orderedIds = fullOrder(settings.summaryLayout.order).filter((id) => !hiddenIds.includes(id));
+  // Nuevo orden de las visibles; las ocultas se quedan al final
+  const reorder = useCallback(
+    (visible: SectionId[]) =>
+      updateSettings({ summaryLayout: { order: [...visible, ...fullOrder(settings.summaryLayout.order).filter((id) => hiddenIds.includes(id))], hidden: hiddenIds } }),
+    [updateSettings, settings.summaryLayout.order, hiddenIds],
+  );
 
   // Tarjetas del Resumen (el usuario puede reordenarlas u ocultarlas)
   const sections: Record<SectionId, ReactNode> = {
@@ -202,11 +164,10 @@ export function SummaryTab({
       <SavedDataNotice hasData={yearS.total > 0 || curS.total > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
       {nothing && !q.error ? <Notice tone="warning">Datadis aún no tiene datos de consumo de este suministro.</Notice> : null}
 
-      {editing ? <LayoutEditor onDone={() => onDoneEditing?.()} onDragStateChange={setDragging} /> : null}
-
-      {orderedIds.map((id) => (
-        <Fragment key={id}>{sections[id]}</Fragment>
-      ))}
+      <SortableList ids={orderedIds} renderItem={(id) => sections[id]} onReorder={reorder} onDragStateChange={setDragging} />
+      <T variant="small" style={{ textAlign: 'center' }}>
+        Mantén pulsada una tarjeta para moverla
+      </T>
     </Screen>
   );
 }
@@ -217,7 +178,7 @@ function TipRow({ tip }: { tip: Tip }) {
   const icon = tip.tone === 'warning' ? 'alert-circle-outline' : tip.tone === 'good' ? 'checkmark-circle-outline' : 'bulb-outline';
   const color = tip.tone === 'warning' ? c.warning : tip.tone === 'good' ? c.p3 : c.tint;
   return (
-    <Pressable onPress={() => setOpen((v) => !v)} style={[styles.tip, { borderColor: c.border }]}>
+    <Pressable onPress={() => setOpen((v) => !v)} onLongPress={() => {}} delayLongPress={300} style={[styles.tip, { borderColor: c.border }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Ionicons name={icon} size={22} color={color} />
         <T style={{ flex: 1, fontWeight: '600' }}>{tip.title}</T>
