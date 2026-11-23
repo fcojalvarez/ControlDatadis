@@ -19,7 +19,7 @@ export const Colors = {
     surplus: '#2F7DD1',
     generation: '#8E5BD6',
     grid: '#E5E8EB',
-    reference: '#1E4FD8',
+    reference: '#000000',
   },
   dark: {
     text: '#ECEDEE',
@@ -39,7 +39,7 @@ export const Colors = {
     surplus: '#5BA4F0',
     generation: '#B18AF0',
     grid: '#262B2F',
-    reference: '#8AB4FF',
+    reference: '#FFFFFF',
   },
 } as const;
 
