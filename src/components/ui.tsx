@@ -107,7 +107,7 @@ export function BottomTabs<V extends string>({
   const c = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.bottomTabs, { borderTopColor: c.border, backgroundColor: c.card, paddingBottom: Math.max(insets.bottom, 6) }]}>
+    <View style={[styles.bottomTabs, { backgroundColor: c.card, paddingBottom: Math.max(insets.bottom, 8) }]}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -117,11 +117,9 @@ export function BottomTabs<V extends string>({
             accessibilityRole="tab"
             accessibilityLabel={o.label}
             accessibilityState={{ selected: active }}
-            style={styles.bottomTab}>
-            <View style={[styles.bottomIcon, active ? { backgroundColor: `${c.tint}22` } : null]}>
-              <Ionicons name={active ? o.iconActive : o.icon} size={22} color={active ? c.tint : c.textSecondary} />
-            </View>
-            <T style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? c.tint : c.textSecondary }} numberOfLines={1}>
+            style={({ pressed }) => [styles.bottomTab, active ? { backgroundColor: c.tint } : null, { opacity: pressed && !active ? 0.6 : 1 }]}>
+            <Ionicons name={active ? o.iconActive : o.icon} size={22} color={active ? c.tintText : c.textSecondary} />
+            <T style={{ fontSize: 11.5, fontWeight: active ? '700' : '500', color: active ? c.tintText : c.textSecondary }} numberOfLines={1}>
               {o.label}
             </T>
           </Pressable>
@@ -579,9 +577,21 @@ const styles = StyleSheet.create({
   tabBar: { paddingHorizontal: Spacing.one, flexGrow: 1 },
   stickyHeader: { borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   stickyInner: { width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
-  bottomTabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6 },
-  bottomTab: { flex: 1, alignItems: 'center', gap: 2 },
-  bottomIcon: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 3 },
+  bottomTabs: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingTop: 8,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    // sombra suave hacia arriba
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 12,
+  },
+  bottomTab: { flex: 1, alignItems: 'center', gap: 2, borderRadius: 16, paddingVertical: 7 },
   tab: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 6, paddingVertical: 12, borderBottomWidth: 3 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },

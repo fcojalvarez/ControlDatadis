@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import { LegendItem, T } from '@/components/ui';
@@ -91,6 +92,21 @@ export function BarChart({
   const ticks = Array.from({ length: Math.round(maxVal / scale.step) + 1 }, (_, i) => i * scale.step);
   const tickDigits = scale.step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(scale.step) - 1e-9));
 
+  // Deslizar el dedo por la gráfica va marcando cada barra (día, semana, mes…) sin levantarlo.
+  // Si la gráfica se desplaza en horizontal, hay que mantener pulsado un instante antes de deslizar.
+  const scrollable = chartW > available + 1;
+  const n = data.length;
+  const scrub = useMemo(() => {
+    const pick = (x: number) => setSelected(Math.max(0, Math.min(n - 1, Math.floor(x / Math.max(1, slot)))));
+    const g = Gesture.Pan()
+      .runOnJS(true)
+      .activeOffsetX([-6, 6])
+      .failOffsetY([-14, 14])
+      .onStart((e) => pick(e.x))
+      .onUpdate((e) => pick(e.x));
+    return scrollable ? g.activateAfterLongPress(220) : g;
+  }, [n, slot, scrollable]);
+
   const sel = selected !== null && selected < data.length ? selected : null;
   const selDatum = sel !== null ? data[sel] : null;
 
@@ -147,7 +163,9 @@ export function BarChart({
               </SvgText>
             ))}
           </Svg>
-          <ScrollView horizontal showsHorizontalScrollIndicator={chartW > available + 1} style={{ flex: 1 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={scrollable} style={{ flex: 1 }}>
+            <GestureDetector gesture={scrub}>
+            <View>
             <Svg width={chartW} height={height}>
               {ticks.map((t, i) => (
                 <Line key={i} x1={0} x2={chartW} y1={y(t)} y2={y(t)} stroke={c.grid} strokeWidth={1} />
@@ -200,6 +218,8 @@ export function BarChart({
                 </G>
               ))}
             </Svg>
+            </View>
+            </GestureDetector>
           </ScrollView>
         </View>
       )}
