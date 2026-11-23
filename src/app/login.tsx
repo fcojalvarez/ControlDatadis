@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppLogo } from '@/components/app-logo';
 import { Button, ErrorBox, InfoToggle, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
@@ -40,8 +41,8 @@ export default function LoginScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
         <View style={styles.form}>
-          <View style={[styles.logo, { backgroundColor: c.tint }]}>
-            <Ionicons name="flash" size={38} color={c.tintText} />
+          <View style={styles.logo}>
+            <AppLogo size={76} />
           </View>
           <T variant="title" style={{ textAlign: 'center', marginBottom: Spacing.four }}>
             Control Datadis
