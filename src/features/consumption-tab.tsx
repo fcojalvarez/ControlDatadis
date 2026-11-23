@@ -29,7 +29,7 @@ import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  estimateCost,
+  flatPrice,
   normalize,
   normalizeMaxPower,
   pctChange,
@@ -53,8 +53,9 @@ import {
   fmtNum,
   pad2,
 } from '@/lib/format';
+import { costOfRange } from '@/lib/billing';
+import { contractedOnFn, currentContract } from '@/lib/contracts';
 import { maxPowerPeriod, PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
-import { currentContract } from '@/lib/contracts';
 
 import { useConsumptionMonths } from './consumption-data';
 import {
@@ -81,16 +82,16 @@ const PERIODS_INFO =
   'P1 Punta: L-V de 10 a 14 h y de 18 a 22 h.\nP2 Llano: L-V de 8 a 10 h, de 14 a 18 h y de 22 a 24 h.\nP3 Valle: de 0 a 8 h, fines de semana y festivos.\n\nCuanto más consumo en valle, más barata la factura.';
 
 const POWER_INFO =
-  'Barras: la potencia media más alta de cada día (o de cada hora) según tu curva de consumo. Es una media de 1 hora (o de 15 min si eliges «15 min»), así que los picos reales de unos segundos son más altos.\n\n' +
-  'Punto: el pico real de 15 minutos que midió tu contador. Datadis solo da el mayor de cada mes, con su día y hora.\n\n' +
-  'Línea: tu potencia contratada. El limitador tolera hasta un +10 % aproximadamente.';
+  'Barras: la potencia media más alta de cada día (o de cada hora) según tu curva de consumo. Es la media de 1 hora, o de 15 minutos si eliges «Cada 15 minutos» en las opciones de la gráfica.\n\n' +
+  'Punto: el pico de 15 minutos que midió tu contador. Datadis solo da el mayor de cada mes y periodo, con su día y hora.\n\n' +
+  'Línea: tu potencia contratada.';
 
 /** Pico de potencia de la curva (media del intervalo) */
 type CurvePeak = { kw: number; start: number; period: Period };
 
 export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const c = useTheme();
-  const { current: tariff } = useSupplyTariffs(supply.cups);
+  const { current: tariff, cfg: tariffCfg } = useSupplyTariffs(supply.cups);
   const { settings } = useSession();
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
   const [range, setRange] = useState<DateRange>(() => initialRange(bounds));
@@ -142,7 +143,14 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   );
   const s = useMemo(() => summarize(readings, intervalMin), [readings, intervalMin]);
   const showSolar = settings.hasSolar && s.hasSelfConsumption;
-  const cost = useMemo(() => estimateCost(s.byPeriod, s.surplus, s.days, contractedKW, tariff), [s, contractedKW, tariff]);
+  // Mismo cálculo que Facturas: tarifa y potencia de cada día
+  const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
+  const costR = useMemo(
+    () => costOfRange(normalize(win.flatMap((k) => q.months[k] ?? []), 60).filter((x) => x.day >= range.from && x.day <= range.to), tariffCfg.history, contractedOn, range.from, range.to),
+    [q.months, win, range, tariffCfg.history, contractedOn],
+  );
+  const cost = costR.cost;
+  const singleTariff = costR.tariffNames.length <= 1;
 
   // Pico de potencia de la curva por día, por mes y por hora del día
   const curvePeaks = useMemo(() => {
@@ -635,7 +643,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
             {s.peak && <KeyValue k="Hora de más consumo" v={`${fmtDate(s.peak.day)}, ${hhmm(s.peak.start)}`} hint={fmtKWh(s.peak.kwh, 2)} />}
             {s.maxDay && <KeyValue k="Día de más consumo" v={fmtDate(s.maxDay.key)} hint={fmtKWh(s.maxDay.total, 1)} />}
             {s.minDay && <KeyValue k="Día de menos consumo" v={fmtDate(s.minDay.key)} hint={fmtKWh(s.minDay.total, 1)} />}
-            <KeyValue k="Siempre encendido" v={fmtKW(s.baseLoadKW, 2)} hint={`≈ ${fmtEur(s.baseLoadKW * 24 * 365 * tariff.energy.P3)}/año`} />
+            <KeyValue k="Siempre encendido" v={fmtKW(s.baseLoadKW, 2)} hint={`≈ ${fmtEur(s.baseLoadKW * 24 * 365 * flatPrice(tariff.energy))}/año`} />
             <KeyValue k="Laborables / fin de semana" v={`${fmtKWh(avg(s.weekdayAvg.slice(0, 5)), 1)} / ${fmtKWh(avg(s.weekdayAvg.slice(5)), 1)}`} />
             <KeyValue k="Lecturas estimadas" v={`${fmtNum((s.estimatedCount / readings.length) * 100, 1)} %`} />
           </Card>
@@ -647,11 +655,11 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
                 <KeyValue
                   key={p}
                   k={`Energía ${PERIOD_LABELS[p].toLowerCase()}`}
-                  hint={`${fmtKWh(s.byPeriod[p], 1)} × ${fmtNum(tariff.energy[p], 4)} €`}
-                  v={fmtEur(s.byPeriod[p] * tariff.energy[p])}
+                  hint={singleTariff ? `${fmtKWh(s.byPeriod[p], 1)} × ${fmtNum(tariff.energy[p], 4)} €` : fmtKWh(s.byPeriod[p], 1)}
+                  v={fmtEur(cost.energyByPeriod[p])}
                 />
               ))}
-              <KeyValue k="Potencia" hint={contractedKW.length ? `${contractedKW.map((k) => fmtNum(k, 2)).join(' / ')} kW × ${s.days} días` : undefined} v={fmtEur(cost.power)} />
+              <KeyValue k="Potencia" hint={contractedKW.length ? `${contractedKW.map((k) => fmtNum(k, 2)).join(' / ')} kW × ${costR.days} días` : undefined} v={fmtEur(cost.power)} />
               {cost.surplusCompensation > 0 && <KeyValue k="Compensación excedentes" v={`−${fmtEur(cost.surplusCompensation)}`} />}
               {cost.discount > 0 && <KeyValue k="Descuento" v={`−${fmtEur(cost.discount)}`} />}
               <KeyValue k="Impuesto eléctrico" v={fmtEur(cost.electricityTax)} />

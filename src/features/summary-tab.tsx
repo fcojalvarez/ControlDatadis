@@ -8,12 +8,13 @@ import { Card, Delta, SavedDataNotice, InlineLoading, Loading, Notice, Screen, T
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
-import { estimateCost, normalize, pctChange, summarize } from '@/lib/consumption';
+import { ZERO_COST, flatPrice, normalize, pctChange, summarize } from '@/lib/consumption';
+import { costOfRange } from '@/lib/billing';
+import { contractedOnFn } from '@/lib/contracts';
 import { WEEKDAYS, cap, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum, pad2 } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS, type Period } from '@/lib/periods';
-import { currentContract } from '@/lib/contracts';
 
-import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
+import { addMonths, daysInMonth, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
 import { useContract } from './queries';
 import { OfflineDataCard } from './offline-data';
@@ -42,7 +43,7 @@ function fullOrder(saved: string[]): SectionId[] {
 export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab: 'consumo' | 'potencia' | 'contrato') => void }) {
   const [dragging, setDragging] = useState(false);
   const c = useTheme();
-  const { current: tariff } = useSupplyTariffs(supply.cups);
+  const { current: tariff, cfg: tariffCfg } = useSupplyTariffs(supply.cups);
   const bounds = useMemo(() => supplyBounds(supply), [supply]);
   const cur = bounds.max;
   const prev = addMonths(cur, -1);
@@ -52,8 +53,6 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const q = useConsumptionMonths(supply, months, 0);
   const contract = useContract(supply);
 
-  const ct = currentContract(contract.data?.contracts);
-  const contractedKW = useMemo(() => ct?.contractedPowerkW ?? [], [ct]);
   const periodColors: Record<Period, string> = { P1: c.p1, P2: c.p2, P3: c.p3 };
 
   const data = useMemo(() => {
@@ -71,8 +70,19 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   }, [q.months, cur, prev, bounds.min]);
 
   const { curS, prevS, prevYoyS, yearS, prevSameDays } = data;
-  const prevCost = estimateCost(prevS.byPeriod, prevS.surplus, prevS.days, contractedKW, tariff);
-  const yearCost = estimateCost(yearS.byPeriod, yearS.surplus, yearS.days, contractedKW, tariff);
+  // Mismo cálculo que Facturas (tarifa y potencia de cada día, meses naturales)
+  const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
+  const costs = useMemo(() => {
+    const read = (keys: string[]) => normalize(keys.flatMap((k) => q.months[k] ?? []), 60);
+    const end = (k: string) => `${k}-${String(daysInMonth(k)).padStart(2, '0')}`;
+    const keys = data.last12Keys;
+    return {
+      prev: costOfRange(read([prev]), tariffCfg.history, contractedOn, `${prev}-01`, end(prev)).cost,
+      year: keys.length ? costOfRange(read(keys), tariffCfg.history, contractedOn, `${keys[0]}-01`, end(keys[keys.length - 1])).cost : ZERO_COST,
+    };
+  }, [q.months, prev, data.last12Keys, tariffCfg.history, contractedOn]);
+  const prevCost = costs.prev;
+  const yearCost = costs.year;
 
 
   const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: tariff.energy }), [yearS, curS, tariff.energy]);
@@ -135,9 +145,9 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
           }
           onPress={() => onOpen('consumo')}>
           <BarChart
-            data={[...yearS.monthly, ...(curS.monthly.length ? curS.monthly : [])].map((m) => ({
+            data={yearS.monthly.map((m) => ({
               label: fmtMonthShort(m.key).split(' ')[0],
-              detail: fmtMonthLong(m.key) + (m.key === cur ? ' (en curso)' : ''),
+              detail: cap(fmtMonthLong(m.key)),
               segments: PERIODS.map((p) => ({ value: m[p], color: periodColors[p], name: PERIOD_LABELS[p] })),
             }))}
             formatValue={(v) => fmtKWh(v, 0)}
@@ -230,7 +240,7 @@ function buildTips({
     tips.push({
       tone: 'info',
       title: `${fmtNum(yearS.baseLoadKW * 1000, 0)} W siempre encendidos`,
-      text: `Son unos ${fmtKWh(baseYear, 0)} al año (${fmtEur(baseYear * prices.P3)}), el ${fmtNum((baseYear / ((yearS.total / Math.max(1, yearS.days)) * 365)) * 100, 0)} % de tu consumo. Revisa aparatos en standby, deshumidificadores o equipos antiguos.`,
+      text: `Son unos ${fmtKWh(baseYear, 0)} al año (${fmtEur(baseYear * flatPrice(prices))}), el ${fmtNum((baseYear / ((yearS.total / Math.max(1, yearS.days)) * 365)) * 100, 0)} % de tu consumo. Revisa aparatos en standby, deshumidificadores o equipos antiguos.`,
     });
   }
 

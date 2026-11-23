@@ -5,6 +5,7 @@ import { Card, Disclosure, Empty, KeyValue, Loading, Notice, SavedDataNotice, Sc
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
+import { currentContract } from '@/lib/contracts';
 import { fmtDate, fmtNum } from '@/lib/format';
 
 import { useContract } from './queries';
@@ -17,7 +18,9 @@ export function ContractTab({ supply }: { supply: SupplyRef }) {
   const { settings } = useSession();
   const q = useContract(supply);
   const contracts = [...(q.data?.contracts ?? [])].sort((a, b) => ((a.startDate ?? '') < (b.startDate ?? '') ? 1 : -1));
-  const [ct, ...previous] = contracts;
+  // El vigente se elige igual que en el resto de la app; los demás van a «Contratos anteriores»
+  const ct = currentContract(contracts);
+  const previous = contracts.filter((x) => x !== ct);
   const kw = ct?.contractedPowerkW ?? [];
   const hasSelf = !!ct && settings.hasSolar && !!(ct.selfConsumptionTypeCode || ct.cau);
   const installed = ct?.installedCapacityKW ?? ct?.installedCapacity;

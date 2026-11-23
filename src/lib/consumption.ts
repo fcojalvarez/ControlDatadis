@@ -259,6 +259,7 @@ export const DEFAULT_PRICES: Prices = {
 };
 
 export type CostBreakdown = {
+  energyByPeriod: Record<Period, number>; // energía de cada periodo antes del descuento
   energy: number; // término de energía (ya con descuento)
   discount: number; // descuento aplicado sobre la energía
   power: number;
@@ -271,6 +272,7 @@ export type CostBreakdown = {
 };
 
 export const ZERO_COST: CostBreakdown = {
+  energyByPeriod: { P1: 0, P2: 0, P3: 0 },
   energy: 0,
   discount: 0,
   power: 0,
@@ -283,9 +285,26 @@ export const ZERO_COST: CostBreakdown = {
 };
 
 export function addCosts(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
-  const out = { ...a };
-  for (const k of Object.keys(out) as (keyof CostBreakdown)[]) out[k] = a[k] + b[k];
-  return out;
+  return {
+    energyByPeriod: { P1: a.energyByPeriod.P1 + b.energyByPeriod.P1, P2: a.energyByPeriod.P2 + b.energyByPeriod.P2, P3: a.energyByPeriod.P3 + b.energyByPeriod.P3 },
+    energy: a.energy + b.energy,
+    discount: a.discount + b.discount,
+    power: a.power + b.power,
+    surplusCompensation: a.surplusCompensation + b.surplusCompensation,
+    electricityTax: a.electricityTax + b.electricityTax,
+    meterRental: a.meterRental + b.meterRental,
+    extras: a.extras + b.extras,
+    vat: a.vat + b.vat,
+    total: a.total + b.total,
+  };
+}
+
+/**
+ * Precio medio de la energía para un consumo constante (24 h × 7 días): de las 168 horas de la
+ * semana, 40 son punta, 40 llano y 88 valle (noches, fines de semana).
+ */
+export function flatPrice(energy: Record<Period, number>): number {
+  return (energy.P1 * 40 + energy.P2 * 40 + energy.P3 * 88) / 168;
 }
 
 /**
@@ -313,6 +332,7 @@ export function estimateCost(
   const extras = ((prices.extrasMonthly ?? 0) * days * 12) / 365;
   const vat = ((base + electricityTax + meterRental + extras) * prices.vat) / 100;
   return {
+    energyByPeriod: { P1: byPeriod.P1 * prices.energy.P1, P2: byPeriod.P2 * prices.energy.P2, P3: byPeriod.P3 * prices.energy.P3 },
     energy,
     discount,
     power,

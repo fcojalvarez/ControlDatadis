@@ -187,5 +187,8 @@ export function rangePresets(b: Bounds): { label: string; range: DateRange }[] {
     { label: 'Últimos 12 meses', range: clampRange({ from: `${addMonths(thisMonth, -11)}-01`, to: last }, b) },
     { label: `Año ${y}`, range: yearRangeOf(y, b) },
     { label: `Año ${y - 1}`, range: yearRangeOf(y - 1, b) },
-  ].filter((p) => p.range.from <= p.range.to && p.range.to >= db.from);
+  ]
+    // Un año solo se ofrece si se puede ver entero desde enero (Datadis solo da 2 años)
+    .filter((p) => !p.label.startsWith('Año') || p.range.from.endsWith('-01-01'))
+    .filter((p) => p.range.from <= p.range.to && p.range.to >= db.from);
 }

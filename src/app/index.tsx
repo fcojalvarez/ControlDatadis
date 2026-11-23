@@ -150,7 +150,7 @@ function SupplyCard({ s }: { s: Supply }) {
         </View>
         <View style={styles.tiles}>
           <MonthTile cups={s.cups} />
-          <Tile icon="flash-outline" label="Potencia" value={kw.length ? `${fmtNum(Math.max(...kw), 2)} kW` : '—'} />
+          <Tile icon="flash-outline" label="Contratada" value={kw.length ? `${fmtNum(Math.max(...kw), 2)} kW` : '—'} />
           <PeakTile cups={s.cups} />
         </View>
       </Card>
@@ -199,7 +199,7 @@ function PeakTile({ cups }: { cups: string }) {
     }, [username, cups]),
   );
   const color = v.pct === null ? undefined : v.pct > 1 ? c.danger : v.pct > 0.85 ? c.warning : undefined;
-  return <Tile icon="flash-outline" label="Pico" value={v.kw === null ? '—' : `${fmtNum(v.kw, 2)} kW`} color={color} />;
+  return <Tile icon="pulse-outline" label="Pico" value={v.kw === null ? '—' : `${fmtNum(v.kw, 2)} kW`} color={color} />;
 }
 
 const styles = StyleSheet.create({

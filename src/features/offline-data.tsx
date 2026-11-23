@@ -15,7 +15,7 @@ import { supplyBounds } from './period';
 import type { SupplyRef } from './types';
 
 /** Meses de histórico que se intentan guardar como máximo */
-const MAX_HISTORY_MONTHS = 36;
+const MAX_HISTORY_MONTHS = 24; // Datadis no deja consultar más de 2 años atrás
 
 function historyMonths(supply: SupplyRef) {
   const bounds = supplyBounds(supply);

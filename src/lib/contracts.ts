@@ -31,3 +31,14 @@ export function contractPeriods(contracts: { startDate?: string | null; endDate?
     .sort((a, b) => (a.from < b.from ? -1 : 1));
 }
 
+
+/** Potencia contratada que había un día concreto (YYYY-MM-DD); si no se sabe, la vigente */
+export function contractedOnFn(contracts: ContractDetail[] | undefined | null): (day: string) => number[] {
+  const list = contracts ?? [];
+  const history = contractPeriods(list);
+  const latest = currentContract(list)?.contractedPowerkW ?? [];
+  return (day: string) => {
+    const d = day.replace(/\//g, '-');
+    return history.find((h) => h.from <= d && (!h.to || d <= h.to))?.kw ?? latest;
+  };
+}

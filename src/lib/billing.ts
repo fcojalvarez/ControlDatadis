@@ -64,6 +64,8 @@ export function computeBills(
   history: Tariff[],
   contractedOn: (day: string) => number[],
   today = new Date(),
+  /** Limitar los días facturados a estas fechas (YYYY-MM-DD, ambas incluidas) */
+  clip?: { from: string; to: string },
 ): Bill[] {
   if (!readings.length || !history.length) return [];
   // Consumo por día
@@ -89,8 +91,13 @@ export function computeBills(
     const periodEnd = addDays(next, -1);
     const open = periodEnd >= todayStart;
     // En un periodo abierto se factura hasta el último día con datos
-    const end = open && lastData < periodEnd ? lastData : periodEnd;
-    const realStart = start < firstData ? firstData : start;
+    let end = open && lastData < periodEnd ? lastData : periodEnd;
+    let realStart = start < firstData ? firstData : start;
+    if (clip) {
+      if (ymd(realStart) < clip.from) realStart = parseDay(clip.from);
+      if (ymd(end) > clip.to) end = parseDay(clip.to);
+      if (realStart > end) continue;
+    }
 
     // Agrupar los días por (tarifa, potencia) y calcular cada tramo
     const groups = new Map<string, { tariff: Tariff; kw: number[]; days: number; agg: DayAgg }>();
@@ -144,6 +151,28 @@ export function computeBills(
     });
   }
   return bills;
+}
+
+/**
+ * Coste de unas fechas cualesquiera (sin cortar en facturas), aplicando en cada día la tarifa y la
+ * potencia que había entonces. Se factura desde el primer día con datos hasta el último (sin pasar
+ * de `to`). Es el mismo cálculo que la pestaña Facturas, para que los importes cuadren.
+ */
+export function costOfRange(
+  readings: Reading[],
+  history: Tariff[],
+  contractedOn: (day: string) => number[],
+  from: string,
+  to: string,
+): { cost: CostBreakdown; days: number; tariffNames: string[] } {
+  if (!readings.length || !history.length) return { cost: ZERO_COST, days: 0, tariffNames: [] };
+  const lastData = readings[readings.length - 1].day;
+  const bills = computeBills(readings, 1, history, contractedOn, new Date(), { from, to: to < lastData ? to : lastData });
+  return {
+    cost: bills.reduce((a, b) => addCosts(a, b.cost), ZERO_COST),
+    days: bills.reduce((a, b) => a + b.days, 0),
+    tariffNames: [...new Set(bills.flatMap((b) => b.tariffNames))],
+  };
 }
 
 /** Coste total de un conjunto de lecturas con una tarifa fija (para comparar ofertas) */

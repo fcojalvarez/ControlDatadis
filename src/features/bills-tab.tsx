@@ -23,7 +23,7 @@ import { costWithTariff, computeBills, type Bill } from '@/lib/billing';
 import { normalize } from '@/lib/consumption';
 import { cap, fmtDate, fmtEur, fmtKWh, fmtMonthLong, fmtMonthShort, fmtNum } from '@/lib/format';
 import { PERIOD_LABELS, PERIODS } from '@/lib/periods';
-import { contractPeriods, currentContract } from '@/lib/contracts';
+import { contractedOnFn } from '@/lib/contracts';
 
 import { addMonths, monthRange, useConsumptionMonths } from './consumption-data';
 import { supplyBounds } from './period';
@@ -45,15 +45,7 @@ export function BillsTab({ supply }: { supply: SupplyRef }) {
   const q = useConsumptionMonths(supply, months, 0);
   const contract = useContract(supply);
 
-  const contractedOn = useMemo(() => {
-    const contracts = contract.data?.contracts ?? [];
-    const history = contractPeriods(contracts);
-    const latest = currentContract(contracts)?.contractedPowerkW ?? [];
-    return (day: string) => {
-      const d = day.replace(/\//g, '-');
-      return history.find((h) => h.from <= d && (!h.to || d <= h.to))?.kw ?? latest;
-    };
-  }, [contract.data]);
+  const contractedOn = useMemo(() => contractedOnFn(contract.data?.contracts), [contract.data]);
 
   const readings = useMemo(() => normalize(months.flatMap((k) => q.months[k] ?? []), 60), [q.months, months]);
 
