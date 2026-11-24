@@ -11,10 +11,10 @@
  */
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { BarChart } from '@/components/bar-chart';
-import { DateRangePicker } from '@/components/date-range-picker';
 import { BottomSheet } from '@/components/select';
 import { Button, Card, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -143,7 +143,8 @@ export function CutsCard({ supply }: { supply: SupplyRef }) {
       ))}
       <Button title="＋ Apuntar un corte" onPress={() => setAdding(true)} style={{ marginTop: Spacing.two }} />
 
-      <AddCutSheet supply={supply} visible={adding} onClose={() => setAdding(false)} onSave={(cut) => save([...cuts, cut])} />
+      {/* Se crea al abrir: así empieza siempre con la fecha y hora de ese momento */}
+      {adding ? <AddCutSheet supply={supply} visible onClose={() => setAdding(false)} onSave={(cut) => save([...cuts, cut])} /> : null}
 
       <BottomSheet visible={!!open} onClose={() => setOpenId(null)} title={open ? `${fmtWeekdayDate(open.cut.day, false)} · ${open.cut.time}` : ''}>
         {open ? (
@@ -289,76 +290,100 @@ function CutDetail({
   );
 }
 
+/** Abre el selector nativo de fecha u hora del móvil (Android) */
+function openNativePicker(mode: 'date' | 'time', value: Date, onPick: (d: Date) => void, limits?: { min: Date; max: Date }) {
+  DateTimePickerAndroid.open({
+    mode,
+    value,
+    is24Hour: true,
+    minimumDate: limits?.min,
+    maximumDate: limits?.max,
+    onValueChange: (_e, d) => d && onPick(d),
+  });
+}
+
 function AddCutSheet({ supply, visible, onClose, onSave }: { supply: SupplyRef; visible: boolean; onClose: () => void; onSave: (c: Cut) => void }) {
   const c = useTheme();
   const bounds = useMemo(() => dayBounds(supplyBounds(supply)), [supply]);
-  const [day, setDay] = useState(() => ymd(new Date()));
-  const [time, setTime] = useState('');
+  const [when, setWhen] = useState(() => new Date());
   const [note, setNote] = useState('');
-  const [picker, setPicker] = useState(false);
-  const valid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(time.trim());
+  const native = Platform.OS === 'android';
+  const day = ymd(when);
+  const time = fmtTime(when.getTime());
+  const [y0, m0, d0] = bounds.from.split('-').map(Number);
+  const limits = { min: new Date(y0, m0 - 1, d0), max: new Date() };
 
-  const onTime = (s: string) => {
-    // «2037» → «20:37»
-    const digits = s.replace(/\D/g, '').slice(0, 4);
-    setTime(digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits);
-  };
+  const pickDate = () =>
+    openNativePicker('date', when, (d) => setWhen(new Date(d.getFullYear(), d.getMonth(), d.getDate(), when.getHours(), when.getMinutes())), limits);
+  const pickTime = () => openNativePicker('time', when, (d) => setWhen(new Date(when.getFullYear(), when.getMonth(), when.getDate(), d.getHours(), d.getMinutes())));
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Apuntar un corte">
       <View style={{ gap: Spacing.two }}>
-        <Pressable onPress={() => setPicker(true)} style={[styles.field, { backgroundColor: c.backgroundElement }]} accessibilityRole="button">
-          <Ionicons name="calendar-outline" size={20} color={c.tint} />
-          <T style={{ flex: 1, fontWeight: '600' }}>Fecha</T>
-          <T style={{ fontWeight: '700' }}>{fmtWeekdayDate(day)}</T>
-          <Ionicons name="chevron-forward" size={18} color={c.textSecondary} />
-        </Pressable>
-        <View style={[styles.field, { backgroundColor: c.backgroundElement }]}>
-          <Ionicons name="time-outline" size={20} color={c.tint} />
-          <T style={{ flex: 1, fontWeight: '600' }}>Hora</T>
-          <TextInput
-            value={time}
-            onChangeText={onTime}
-            placeholder="20:37"
-            placeholderTextColor={c.textSecondary}
-            keyboardType="number-pad"
-            maxLength={5}
-            style={[styles.input, { color: c.text }]}
-            accessibilityLabel="Hora del corte"
-          />
-        </View>
+        <T variant="small" style={styles.label}>
+          Fecha
+        </T>
+        {native ? (
+          <Pressable onPress={pickDate} style={[styles.field, { backgroundColor: c.backgroundElement }]} accessibilityRole="button" accessibilityLabel="Elegir fecha">
+            <Ionicons name="calendar-outline" size={22} color={c.tint} />
+            <T style={styles.value}>{fmtWeekdayDate(day)}</T>
+            <Ionicons name="chevron-down" size={20} color={c.textSecondary} />
+          </Pressable>
+        ) : (
+          <WebField value={day} placeholder="AAAA-MM-DD" onChange={(v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && setWhen(new Date(`${v}T${time}`))} />
+        )}
+        <T variant="small" style={styles.label}>
+          Hora
+        </T>
+        {native ? (
+          <Pressable onPress={pickTime} style={[styles.field, { backgroundColor: c.backgroundElement }]} accessibilityRole="button" accessibilityLabel="Elegir hora">
+            <Ionicons name="time-outline" size={22} color={c.tint} />
+            <T style={styles.value}>{time}</T>
+            <Ionicons name="chevron-down" size={20} color={c.textSecondary} />
+          </Pressable>
+        ) : (
+          <WebField value={time} placeholder="HH:MM" onChange={(v) => /^\d{2}:\d{2}$/.test(v) && setWhen(new Date(`${day}T${v}`))} />
+        )}
+        <T variant="small" style={styles.label}>
+          Nota (opcional)
+        </T>
         <TextInput
           value={note}
           onChangeText={setNote}
-          placeholder="Nota (opcional): horno + lavadora…"
+          placeholder="Horno + lavadora…"
           placeholderTextColor={c.textSecondary}
           style={[styles.field, styles.note, { backgroundColor: c.backgroundElement, color: c.text }]}
         />
         <T variant="small">Si no sabes la hora exacta, pon la aproximada: la app mira también los 30 minutos de antes y de después.</T>
         <Button
-          title="Guardar"
-          disabled={!valid}
+          title="Guardar corte"
           onPress={() => {
-            const [hh, mm] = time.trim().split(':');
-            onSave({ id: Math.random().toString(36).slice(2, 10), day, time: `${hh.padStart(2, '0')}:${mm}`, note: note.trim() || undefined });
-            setTime('');
+            onSave({ id: Math.random().toString(36).slice(2, 10), day, time, note: note.trim() || undefined });
             setNote('');
+            setWhen(new Date());
             onClose();
           }}
         />
       </View>
-      <DateRangePicker
-        visible={picker}
-        onClose={() => setPicker(false)}
-        value={{ from: day, to: day }}
-        limits={{ from: bounds.from, to: ymd(new Date()) }}
-        presets={[]}
-        onApply={(r) => {
-          setDay(r.from);
-          setPicker(false);
-        }}
-      />
     </BottomSheet>
+  );
+}
+
+/** Solo en la versión web (para pruebas): el selector nativo no existe ahí */
+function WebField({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (v: string) => void }) {
+  const c = useTheme();
+  const [text, setText] = useState(value);
+  return (
+    <TextInput
+      value={text}
+      onChangeText={(v) => {
+        setText(v);
+        onChange(v);
+      }}
+      placeholder={placeholder}
+      placeholderTextColor={c.textSecondary}
+      style={[styles.field, styles.note, { backgroundColor: c.backgroundElement, color: c.text }]}
+    />
   );
 }
 
@@ -367,7 +392,8 @@ const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6 },
   chip: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   verdict: { borderRadius: 12, padding: 12 },
-  field: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 14, minHeight: 50 },
-  note: { fontSize: 15 },
-  input: { fontSize: 17, fontWeight: '700', minWidth: 70, textAlign: 'right', paddingVertical: 10 },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, paddingHorizontal: 14, minHeight: 56 },
+  value: { flex: 1, fontSize: 18, fontWeight: '700' },
+  label: { fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: -4 },
+  note: { fontSize: 16 },
 });

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { T } from '@/components/ui';
@@ -12,7 +12,9 @@ export function BottomSheet({ visible, onClose, title, children }: { visible: bo
   const c = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      {/* Con el teclado abierto la hoja sube por encima de él (no queda nada tapado) */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Cerrar" />
       <View style={[styles.sheet, { backgroundColor: c.card, paddingBottom: Math.max(insets.bottom, 16) }]}>
         <View style={[styles.handle, { backgroundColor: c.border }]} />
@@ -24,10 +26,11 @@ export function BottomSheet({ visible, onClose, title, children }: { visible: bo
             <Ionicons name="close" size={24} color={c.textSecondary} />
           </Pressable>
         </View>
-        <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ paddingBottom: 8 }}>
+        <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
