@@ -10,7 +10,7 @@ import { BarChart, SplitBar, type BarDatum } from '@/components/bar-chart';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { BottomSheet } from '@/components/select';
 import { Heatmap } from '@/components/heatmap';
-import { Card, DataTable, Delta, Disclosure, Empty, InlineLoading, KeyValue, Loading, SavedDataNotice, Screen, Stat, Stepper, T, type Column } from '@/components/ui';
+import { Card, DataTable, Delta, Disclosure, Empty, InlineLoading, KeyValue, Loading, Notice, SavedDataNotice, Screen, Stat, Stepper, T, type Column } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/context/session';
 import { useTheme } from '@/hooks/use-theme';
@@ -168,7 +168,14 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
   const unit: Unit = powerAvailable ? unitPref : 'kwh';
 
   const periodColors: Record<Period, string> = { P1: c.p1, P2: c.p2, P3: c.p3 };
-  const periodLegend = PERIODS.map((p) => ({ color: periodColors[p], label: PERIOD_LABELS[p] }));
+  // Datos estimados por la distribuidora: no son lo que midió el contador (el reparto por horas
+  // y periodos sigue un perfil estándar, no tu consumo real)
+  const estShare = readings.length ? s.estimatedCount / readings.length : 0;
+  const isEstimated = (b: Bucket) => b.count > 0 && b.estimated / b.count > 0.5;
+  const periodLegend = [
+    ...PERIODS.map((p) => ({ color: periodColors[p], label: PERIOD_LABELS[p] })),
+    ...(estShare > 0 ? [{ color: c.textSecondary, label: 'Rayado: estimado' }] : []),
+  ];
   const stacked = (b: Record<Period, number>) => PERIODS.map((p) => ({ value: b[p], color: periodColors[p], name: PERIOD_LABELS[p] }));
   const powerColor = (kw: number, p: Period) => {
     const lim = limitFor(p);
@@ -224,7 +231,13 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     chart =
       unit === 'kwh'
         ? {
-            data: s.daily.map((d) => ({ label: isMonth ? String(Number(d.key.slice(8))) : fmtDayShort(d.key), detail: `${WEEKDAYS[weekdayOf(d.key)]} ${fmtDate(d.key)}`, segments: stacked(d) })),
+            data: s.daily.map((d) => ({
+              label: isMonth ? String(Number(d.key.slice(8))) : fmtDayShort(d.key),
+              detail: `${WEEKDAYS[weekdayOf(d.key)]} ${fmtDate(d.key)}`,
+              segments: stacked(d),
+              estimated: isEstimated(d),
+              note: isEstimated(d) ? 'Estimado por la distribuidora (no medido por tu contador)' : undefined,
+            })),
             format: (v) => fmtKWh(v, 1),
             refs: [{ value: s.avgPerDay, color: c.reference, label: `media ${fmtNum(s.avgPerDay, 1)} kWh` }],
             legend: periodLegend,
@@ -254,7 +267,13 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
     chart =
       unit === 'kwh'
         ? {
-            data: s.monthly.map((m) => ({ label: fmtMonthShort(m.key).split(' ')[0], detail: cap(fmtMonthLong(m.key)), segments: stacked(m) })),
+            data: s.monthly.map((m) => ({
+              label: fmtMonthShort(m.key).split(' ')[0],
+              detail: cap(fmtMonthLong(m.key)),
+              segments: stacked(m),
+              estimated: isEstimated(m),
+              note: m.estimated ? `${fmtNum((m.estimated / m.count) * 100, 0)} % estimado por la distribuidora` : undefined,
+            })),
             format: (v) => fmtKWh(v, 0),
             legend: periodLegend,
           }
@@ -322,7 +341,8 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
               label: new Date(r.start).getMinutes() === 0 ? String(new Date(r.start).getHours()) : '',
               detail: `${fmtTime(r.start)} – ${fmtTime(r.start + intervalMin * 60_000)} · ${PERIOD_LABELS[r.period]}`,
               segments: [{ value: r.kwh, color: periodColors[r.period] }],
-              note: r.real ? undefined : 'Lectura estimada',
+              estimated: !r.real,
+              note: r.real ? undefined : 'Estimado por la distribuidora (no medido por tu contador)',
             })),
             format: (v) => fmtKWh(v, 3),
             legend: periodLegend,
@@ -421,6 +441,16 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
 
       {loadingFirst ? <Loading text="Descargando tu consumo…" /> : null}
       <SavedDataNotice hasData={readings.length > 0} error={q.error} stale={q.stale} ts={q.updatedAt} onRetry={q.refresh} />
+      {estShare > 0.05 ? (
+        <Notice tone="warning">
+          <T style={{ fontWeight: '700' }}>
+            {estShare > 0.995 ? 'Todos estos datos son estimados' : `El ${fmtNum(estShare * 100, 0)} % de estos datos son estimados`} por la distribuidora
+          </T>
+          <T variant="small" style={{ color: c.text }}>
+            No es lo que midió tu contador: la distribuidora reparte una estimación con un perfil estándar, que carga más la punta. Por eso el reparto por horas y periodos no es el tuyo real. Cuando publique las lecturas reales, la app las descargará sola.
+          </T>
+        </Notice>
+      ) : null}
 
       {!q.loading && !q.error && readings.length === 0 ? (
         <Empty text={mt === 1 ? 'Sin datos cada 15 minutos para estas fechas. Prueba con «Cada hora».' : 'Aún no hay datos para estas fechas.'} />
@@ -563,7 +593,7 @@ export function ConsumptionTab({ supply }: { supply: SupplyRef }) {
           </Card>
 
           {/* ---------- Periodos ---------- */}
-          <Card title="Periodos" info={PERIODS_INFO}>
+          <Card title="Periodos" info={PERIODS_INFO} subtitle={estShare > 0.5 ? 'Con datos estimados: tu reparto real puede ser muy distinto' : undefined}>
             <SplitBar parts={PERIODS.map((p) => ({ value: s.byPeriod[p], color: periodColors[p] }))} height={12} />
             <View style={styles.periodRow}>
               {PERIODS.map((p) => (
@@ -688,7 +718,7 @@ function BucketTable({
   const total = withTotal
     ? buckets.reduce<Bucket>(
         (a, b) => ({ ...a, total: a.total + b.total, P1: a.P1 + b.P1, P2: a.P2 + b.P2, P3: a.P3 + b.P3, surplus: a.surplus + b.surplus }),
-        { key: '__total', total: 0, P1: 0, P2: 0, P3: 0, surplus: 0, generation: 0, selfConsumption: 0, count: 0 },
+        { key: '__total', total: 0, P1: 0, P2: 0, P3: 0, surplus: 0, generation: 0, selfConsumption: 0, count: 0, estimated: 0 },
       )
     : undefined;
   return <DataTable columns={cols} rows={buckets} footer={total} />;

@@ -85,7 +85,13 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
   const yearCost = costs.year;
 
 
-  const tips = useMemo(() => buildTips({ yearS: yearS.total ? yearS : curS, prices: tariff.energy }), [yearS, curS, tariff.energy]);
+  // Parte de los datos estimados por la distribuidora (su reparto por periodos no es el real)
+  const estOf = (x: ReturnType<typeof summarize>) => {
+    const n = x.daily.reduce((a, b) => a + b.count, 0);
+    return n ? x.estimatedCount / n : 0;
+  };
+  const tipBase = yearS.total ? yearS : curS;
+  const tips = useMemo(() => buildTips({ yearS: tipBase, prices: tariff.energy, estimated: estOf(tipBase) }), [tipBase, tariff.energy]);
 
   const nothing = !q.loading && !curS.total && !prevS.total && !yearS.total;
 
@@ -133,6 +139,11 @@ export function SummaryTab({ supply, onOpen }: { supply: SupplyRef; onOpen: (tab
           </View>
           <SplitBar parts={PERIODS.map((p) => ({ value: prevS.byPeriod[p], color: periodColors[p] }))} height={12} />
           <T variant="small">{legendLine}</T>
+          {estOf(prevS) > 0.5 ? (
+            <T variant="small" style={{ color: c.warning }}>
+              Datos estimados por la distribuidora: el reparto por periodos no es el real.
+            </T>
+          ) : null}
         </Card>
       ) : null,
     anio: yearS.total > 0 ? (
@@ -216,12 +227,23 @@ type Tip = { title: string; text: string; tone: 'info' | 'warning' | 'good' };
 function buildTips({
   yearS,
   prices,
+  estimated,
 }: {
   yearS: ReturnType<typeof summarize>;
   prices: Record<Period, number>;
+  estimated: number;
 }): Tip[] {
   const tips: Tip[] = [];
   if (!yearS.total) return tips;
+  if (estimated > 0.3) {
+    // Con muchos datos estimados, los consejos por horas y periodos no tienen sentido
+    tips.push({
+      tone: 'warning',
+      title: `${fmtNum(estimated * 100, 0)} % de tus datos son estimados`,
+      text: 'La distribuidora no ha enviado lo que midió tu contador, sino una estimación repartida con un perfil estándar. Los consejos por horas y periodos volverán cuando lleguen las lecturas reales.',
+    });
+    return tips;
+  }
   const share = (p: Period) => (yearS.byPeriod[p] / yearS.total) * 100;
 
   if (share('P1') > 30) {

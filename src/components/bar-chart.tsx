@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, Pattern, Rect, Text as SvgText } from 'react-native-svg';
 
 import { LegendItem, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -16,6 +16,8 @@ export type BarDatum = {
   detail?: string; // título al seleccionar la barra
   segments: Segment[]; // apilados (de abajo a arriba) o agrupados (lado a lado)
   note?: string; // texto extra al seleccionar
+  /** Dato estimado por la distribuidora (se dibuja rayado) */
+  estimated?: boolean;
 };
 
 type Props = {
@@ -167,6 +169,11 @@ export function BarChart({
             <GestureDetector gesture={scrub}>
             <View>
             <Svg width={chartW} height={height}>
+              <Defs>
+                <Pattern id="estimado" patternUnits="userSpaceOnUse" width={6} height={6} patternTransform="rotate(45)">
+                  <Rect x={0} y={0} width={2.5} height={6} fill={c.card} opacity={0.55} />
+                </Pattern>
+              </Defs>
               {ticks.map((t, i) => (
                 <Line key={i} x1={0} x2={chartW} y1={y(t)} y2={y(t)} stroke={c.grid} strokeWidth={1} />
               ))}
@@ -190,6 +197,9 @@ export function BarChart({
                       const y1 = y(acc);
                       return <Rect key={j} x={x0} y={y1} width={bw} height={Math.max(0.5, y0 - y1)} fill={s.color} rx={bw > 6 ? 2 : 0} />;
                     })}
+                    {d.estimated && peaks[i] > 0 ? (
+                      <Rect x={x0} y={y(peaks[i])} width={groupW} height={Math.max(0.5, y(0) - y(peaks[i]))} fill="url(#estimado)" />
+                    ) : null}
                     {markers[i] ? (
                       <Circle
                         cx={i * slot + slot / 2}

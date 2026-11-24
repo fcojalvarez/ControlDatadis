@@ -136,10 +136,12 @@ export type Bucket = {
   generation: number;
   selfConsumption: number;
   count: number;
+  /** lecturas estimadas por la distribuidora (no medidas por el contador) */
+  estimated: number;
 };
 
 function emptyBucket(key: string): Bucket {
-  return { key, total: 0, P1: 0, P2: 0, P3: 0, surplus: 0, generation: 0, selfConsumption: 0, count: 0 };
+  return { key, total: 0, P1: 0, P2: 0, P3: 0, surplus: 0, generation: 0, selfConsumption: 0, count: 0, estimated: 0 };
 }
 
 function addTo(b: Bucket, r: Reading) {
@@ -149,6 +151,7 @@ function addTo(b: Bucket, r: Reading) {
   b.generation += r.generation;
   b.selfConsumption += r.selfConsumption;
   b.count += 1;
+  if (!r.real) b.estimated += 1;
 }
 
 export function groupBy(readings: Reading[], keyOf: (r: Reading) => string): Bucket[] {
